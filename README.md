@@ -1,0 +1,2 @@
+# REDM Character Storage
+ 
