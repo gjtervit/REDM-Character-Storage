@@ -1,0 +1,14 @@
+<1.0.1>
+- Added version checking system
+- Created README documentation
+- Fixed bug with player removal from storage access list
+- Code optimizations and documentation improvements
+
+<1.0.0>
+- Initial release
+- Player storage creation system
+- Storage access management
+- Storage capacity upgrades
+- Multi-language support (English and Spanish)
+- Storage renaming system
+- Admin commands for storage management

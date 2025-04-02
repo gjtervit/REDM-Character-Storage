@@ -1,0 +1,33 @@
+fx_version 'cerulean'
+games { 'rdr3' }
+rdr3_warning 'I acknowledge that this is a prerelease build of RedM, and I am aware my resources *will* become incompatible once RedM ships.'
+
+author 'Your Name'
+description 'Character Storage System for RedM servers'
+version '1.0.1'
+
+-- Shared files
+shared_scripts {
+    'config.lua',
+}
+
+-- Client scripts
+client_scripts {
+    'client/client.lua',
+    'client/menu.lua',
+}
+
+-- Server scripts
+server_scripts {
+    'server/database.lua',
+    'server/server.lua',
+    'update.lua',
+}
+
+-- Dependencies
+dependencies {
+    'vorp_core',
+    'vorp_inventory',
+    'vorp_menu',
+    'syn_inputs'
+}
