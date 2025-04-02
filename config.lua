@@ -9,6 +9,9 @@ Config.StorageCreationPrice = 500
 -- Price to increase storage capacity
 Config.StorageUpgradePrice = 100
 
+-- Price multiplier for each tier of upgrades (0.25 = 25% increase per tier)
+Config.StorageUpgradePriceMultiplier = 0.25
+
 -- Amount to increase storage by
 Config.StorageUpgradeSlots = 20
 
@@ -75,7 +78,7 @@ Config.Translations = {
         ["confirm_removal"] = "Confirm Removal",
         ["create_storage"] = "Create Storage",
         ["nearby_players"] = "Nearby Players",
-        ["add_player_title"] = "Add Player to Storage #%d",
+        ["add_player_title"] = "Add Player",
         ["select_method"] = "Select method",
         
         -- Menu options
@@ -162,7 +165,7 @@ Config.Translations = {
         ["confirm_removal"] = "Confirmar Eliminación",
         ["create_storage"] = "Crear Almacenamiento",
         ["nearby_players"] = "Jugadores Cercanos",
-        ["add_player_title"] = "Añadir Jugador al Almacén #%d",
+        ["add_player_title"] = "Añadir Jugador",
         ["select_method"] = "Seleccionar método",
         
         -- Menu options

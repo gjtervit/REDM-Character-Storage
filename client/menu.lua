@@ -66,12 +66,20 @@ function OpenOwnerStorageMenu(storageId)
     
     -- Get the storage name for the title
     local storageName = GetTranslation("storage_title", storageId)
+    local currentCapacity = Config.DefaultCapacity
+    
+    -- Find storage details
     for _, storage in pairs(playerStorages) do
         if storage.id == storageId then
             storageName = storage.storage_name or GetTranslation("storage_title", storageId)
+            currentCapacity = tonumber(storage.capacity) or Config.DefaultCapacity
             break
         end
     end
+    
+    -- Calculate the upgrade price based on how many upgrades have been done
+    local previousUpgrades = math.floor((currentCapacity - Config.DefaultCapacity) / Config.StorageUpgradeSlots)
+    local upgradePrice = math.floor(Config.StorageUpgradePrice * math.pow((1 + Config.StorageUpgradePriceMultiplier), previousUpgrades))
     
     local elements = {
         {
@@ -90,7 +98,7 @@ function OpenOwnerStorageMenu(storageId)
             desc = GetTranslation("manage_access_desc")
         },
         {
-            label = GetTranslation("upgrade_storage", Config.StorageUpgradePrice),
+            label = GetTranslation("upgrade_storage", upgradePrice),
             value = "upgrade",
             desc = GetTranslation("upgrade_storage_desc", Config.StorageUpgradeSlots)
         },
@@ -575,8 +583,24 @@ end
 
 -- Confirm upgrade storage menu
 function ConfirmUpgradeStorage(storageId)
+    -- Get the storage's current capacity
+    local currentCapacity = Config.DefaultCapacity
+    for _, storage in pairs(playerStorages) do
+        if storage.id == storageId then
+            currentCapacity = tonumber(storage.capacity) or Config.DefaultCapacity
+            break
+        end
+    end
+    
+    -- Calculate how many upgrades have been done already
+    local previousUpgrades = math.floor((currentCapacity - Config.DefaultCapacity) / Config.StorageUpgradeSlots)
+    
+    -- Calculate the price with multiplier: BasePrice * (1 + Multiplier)^PreviousUpgrades
+    local basePrice = Config.StorageUpgradePrice
+    local multiplier = Config.StorageUpgradePriceMultiplier
+    local upgradePrice = math.floor(basePrice * math.pow((1 + multiplier), previousUpgrades))
+    
     local upgradeSlots = tonumber(Config.StorageUpgradeSlots) or 0
-    local upgradePrice = tonumber(Config.StorageUpgradePrice) or 0
     
     MenuData.CloseAll()
     

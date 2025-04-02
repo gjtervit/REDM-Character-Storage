@@ -1,3 +1,7 @@
+<1.0.2>
+- Fixed some language issues
+- Added a configurable multiplier to upgrading the storage
+
 <1.0.1>
 - Added version checking system
 - Created README documentation

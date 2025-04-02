@@ -1,6 +1,6 @@
 local currentVersion = GetResourceMetadata(GetCurrentResourceName(), "version", 0)
 local resourceName = GetCurrentResourceName()
-local githubRepo = "YourGitHubUsername/character_storage" -- Change this to your actual GitHub repo
+local githubRepo = "RosewoodRidge/REDM-Character-Storage" 
 
 -- Function to check for updates
 function CheckForUpdates()

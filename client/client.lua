@@ -68,7 +68,7 @@ function MainLoop()
                         wait = 0
                         
                         -- Show the prompt with storage name
-                        local storageName = storage.storage_name or GetTranslation("storage_title", storage.id)
+                        local storageName = (storage.storage_name or ("Storage #" .. storage.id)) .. " | ID:" .. storage.id
                         local label = CreateVarString(10, 'LITERAL_STRING', storageName)
                         PromptSetActiveGroupThisFrame(PromptGroup, label)
                         

@@ -43,10 +43,7 @@ function RegisterStorageInventory(id, capacity)
     local prefix = "character_storage_" .. id
     
     -- Get storage name from cache
-    local storageName = "Storage #" .. id
-    if storageCache[id] and storageCache[id].storage_name then
-        storageName = storageCache[id].storage_name
-    end
+    local storageName = (storageCache[id] and storageCache[id].storage_name or ("Storage #" .. id)) .. " | ID:" .. id
     
     -- Remove existing inventory if it exists to avoid conflicts
     if VORPinv:isCustomInventoryRegistered(prefix) then
@@ -210,7 +207,7 @@ AddEventHandler("character_storage:openStorage", function(storageId)
     end
     
     -- Set storage name
-    local storageName = storage.storage_name or "Storage " .. storageId
+    local storageName = (storage.storage_name or ("Storage #" .. storageId)) .. " | ID:" .. storageId
     local inventoryName = "character_storage_" .. storageId
     
     -- Make sure inventory is registered before opening it
@@ -532,20 +529,30 @@ AddEventHandler('character_storage:upgradeStorage', function(storageId)
         return
     end
     
+    local storage = storageCache[storageId]
+    local currentCapacity = tonumber(storage.capacity) or Config.DefaultCapacity
+    
+    -- Calculate the number of previous upgrades
+    local previousUpgrades = math.floor((currentCapacity - Config.DefaultCapacity) / Config.StorageUpgradeSlots)
+    
+    -- Calculate the price with multiplier: BasePrice * (1 + Multiplier)^PreviousUpgrades
+    local basePrice = Config.StorageUpgradePrice
+    local multiplier = Config.StorageUpgradePriceMultiplier
+    local upgradePrice = math.floor(basePrice * math.pow((1 + multiplier), previousUpgrades))
+    
     -- Check if player has enough money
-    if Character.money < Config.StorageUpgradePrice then
+    if Character.money < upgradePrice then
         VORPcore.NotifyRightTip(source, GetTranslation("not_enough_money"), 4000)
         return
     end
     
-    local storage = storageCache[storageId]
-    local newCapacity = storage.capacity + Config.StorageUpgradeSlots
+    local newCapacity = currentCapacity + Config.StorageUpgradeSlots
     
     -- Update storage capacity
     DB.UpdateStorageCapacity(storageId, newCapacity, function(success)
         if success then
             -- Remove money from player
-            Character.removeCurrency(0, Config.StorageUpgradePrice)
+            Character.removeCurrency(0, upgradePrice)
             
             -- Update cache
             storage.capacity = newCapacity
@@ -554,7 +561,10 @@ AddEventHandler('character_storage:upgradeStorage', function(storageId)
             local prefix = "character_storage_" .. storageId
             VORPinv:updateCustomInventorySlots(prefix, newCapacity)
             
-            VORPcore.NotifyRightTip(source, GetTranslation("storage_upgraded", Config.StorageUpgradePrice), 4000)
+            VORPcore.NotifyRightTip(source, GetTranslation("storage_upgraded", upgradePrice), 4000)
+            
+            -- Refresh the player's storage data so the client has updated capacity info
+            RefreshPlayerStorages(source)
         end
     end)
 end)
@@ -592,7 +602,7 @@ AddEventHandler('character_storage:renameStorage', function(storageId, newName)
             -- Re-register the inventory with the new name
             local data = {
                 id = prefix,
-                name = newName,
+                name = newName .. " | ID:" .. storageId,
                 limit = currentStorage.capacity,
                 acceptWeapons = true,
                 shared = false,

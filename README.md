@@ -11,11 +11,11 @@ A comprehensive storage system for RedM servers using VORP Framework. Allow your
 - Multi-language support (English and Spanish)
 
 ## Requirements
-- VORP Core
-- VORP Inventory
-- VORP Menu
-- oxmysql
-- syn_inputs:[https://discord.com/channels/777290543406776341/903875147050655744/943606123171282945]
+- [VORP Core](https://github.com/VORPCORE/vorp_core-lua)
+- [VORP Inventory](https://github.com/VORPCORE/vorp_inventory-lua)
+- [VORP Menu](https://github.com/VORPCORE/vorp_menu)
+- [oxmysql](https://github.com/overextended/oxmysql)
+- [syn_inputs](https://discord.com/channels/777290543406776341/903875147050655744/943606123171282945)
 
 ## Installation
 1. Download the latest release from GitHub
@@ -48,10 +48,9 @@ Config.AutoUpdate = false            -- Experimental auto-update feature
 ```
 
 To update manually:
-1. Check for updates using the `/checkcsupdate` command
-2. Download the latest version from GitHub 
-3. Replace your existing files with the new ones
-4. Restart the resource
+1. Download the latest version from GitHub 
+2. Replace your existing files with the new ones
+3. Restart the resource
 
 ## Configuration
 See the config.lua file for detailed configuration options including:
@@ -61,6 +60,7 @@ See the config.lua file for detailed configuration options including:
 - Language options
 
 ## Version History
+- 1.0.2 - Language updates and multiplier config for slot upgrades
 - 1.0.1 - Added version checking system, bug fixes
 - 1.0.0 - Initial release
 

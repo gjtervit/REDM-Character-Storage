@@ -2,9 +2,9 @@ fx_version 'cerulean'
 games { 'rdr3' }
 rdr3_warning 'I acknowledge that this is a prerelease build of RedM, and I am aware my resources *will* become incompatible once RedM ships.'
 
-author 'Your Name'
+author 'Rosewood Ridge Team'
 description 'Character Storage System for RedM servers'
-version '1.0.1'
+version '1.0.2'
 
 -- Shared files
 shared_scripts {
