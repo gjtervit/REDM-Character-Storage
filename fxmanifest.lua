@@ -4,7 +4,7 @@ rdr3_warning 'I acknowledge that this is a prerelease build of RedM, and I am aw
 
 author 'Rosewood Ridge Team'
 description 'Character Storage System for RedM servers'
-version '1.0.2'
+version '1.0.3'
 
 -- Shared files
 shared_scripts {
@@ -30,4 +30,11 @@ dependencies {
     'vorp_inventory',
     'vorp_menu',
     'syn_inputs'
+}
+
+-- Ensure proper loading order
+server_exports {
+    'GetDatabaseAPI',
+    'LoadAllStoragesFromDatabase',
+    'RegisterAllStorageInventories'
 }

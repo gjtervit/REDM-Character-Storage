@@ -20,21 +20,44 @@ function GetTranslation(key, ...)
     return key
 end
 
+-- Helper function for debug messages
+function DebugMsg(message)
+    if Config.Debug then
+        print("[DEBUG] " .. message)
+    end
+end
+
 -- Initialize the script
 Citizen.CreateThread(function()
     -- Initialize prompts
     InitializePrompts()
     
-    -- Request initial player storages data from server
-    TriggerServerEvent('character_storage:getPlayerStorages')
-    
     -- Start the main loop
     MainLoop()
+    
+    -- Add event listeners for character loading
+    RegisterEventHandlers()
 end)
+
+-- Register character-related event handlers
+function RegisterEventHandlers()
+    -- When character is selected and player spawns
+    AddEventHandler('vorp:SelectedCharacter', function()
+        DebugMsg("Character selected, requesting storage data")
+        TriggerServerEvent('character_storage:getPlayerStorages')
+    end)
+    
+    -- Add event for when player fully loads in (safety measure)
+    RegisterNetEvent('vorp:playerSpawn')
+    AddEventHandler('vorp:playerSpawn', function()
+        DebugMsg("Player spawned, requesting storage data")
+        Citizen.Wait(1000) -- Short delay to ensure server is ready
+        TriggerServerEvent('character_storage:getPlayerStorages')
+    end)
+end
 
 -- Initialize prompts using native system
 function InitializePrompts()
-    -- Storage Access Prompt only - remove the create prompt
     StoragePrompt = PromptRegisterBegin()
     PromptSetControlAction(StoragePrompt, Config.PromptKey)
     local str = CreateVarString(10, 'LITERAL_STRING', GetTranslation("open_storage_prompt"))
@@ -97,8 +120,11 @@ end
 -- Create blips for player storages
 function CreateStorageBlips()
     -- Remove existing blips
-    for _, blip in pairs(storageBlips) do
-        RemoveBlip(blip)
+    for i, blip in pairs(storageBlips) do
+        if blip and DoesBlipExist(blip) then
+            RemoveBlip(blip)
+            storageBlips[i] = nil
+        end
     end
     storageBlips = {}
     
@@ -107,13 +133,17 @@ function CreateStorageBlips()
         for _, storage in pairs(playerStorages) do
             if storage and storage.pos_x then
                 local blip = Citizen.InvokeNative(0x554D9D53F696D002, 1664425300, storage.pos_x, storage.pos_y, storage.pos_z)
-                SetBlipSprite(blip, Config.BlipSprite, 1)
-                SetBlipScale(blip, 0.2)
-                local storageName = storage.storage_name or GetTranslation("storage_title", storage.id)
-                Citizen.InvokeNative(0x9CB1A1623062F402, blip, storageName)
-                table.insert(storageBlips, blip)
+                if blip and DoesBlipExist(blip) then
+                    SetBlipSprite(blip, Config.BlipSprite, 1)
+                    SetBlipScale(blip, 0.2)
+                    local storageName = storage.storage_name or GetTranslation("storage_title", storage.id)
+                    Citizen.InvokeNative(0x9CB1A1623062F402, blip, storageName)
+                    table.insert(storageBlips, blip)
+                    DebugMsg("Created blip for storage #" .. storage.id)
+                end
             end
         end
+        DebugMsg("Created " .. #storageBlips .. " storage blips")
     end
 end
 
@@ -135,6 +165,12 @@ TriggerEvent("chat:addSuggestion", "/createstorage", GetTranslation("create_stor
 -- Network event handlers
 RegisterNetEvent('character_storage:receiveStorages')
 AddEventHandler('character_storage:receiveStorages', function(storages)
+    if not storages then
+        DebugMsg("Received nil storages data")
+        return
+    end
+    
+    DebugMsg("Received " .. #storages .. " storage locations from server")
     playerStorages = storages or {}
     -- Update the storages in menu.lua
     exports["character_storage"]:UpdateStorages(playerStorages)
@@ -169,14 +205,35 @@ end)
 
 RegisterNetEvent('character_storage:removeStorage')
 AddEventHandler('character_storage:removeStorage', function(id)
+    -- Check if the storage being removed is the one we're currently near
+    if nearestStorage and nearestStorage.id == id then
+        DebugMsg("Clearing nearest storage reference as it was deleted")
+        nearestStorage = nil
+    end
+
+    -- Remove the storage from our local table
     for i, storage in ipairs(playerStorages) do
         if storage.id == id then
             table.remove(playerStorages, i)
+            DebugMsg("Removed storage #" .. id .. " from local storage table")
             break
         end
     end
+
+    -- Update the menu with new storage data
     exports["character_storage"]:UpdateStorages(playerStorages)
+    
+    -- Explicitly remove the blip for this specific storage before recreating all
+    for i, blip in pairs(storageBlips) do
+        if blip and DoesBlipExist(blip) then
+            RemoveBlip(blip)
+        end
+    end
+    storageBlips = {} -- Clear the blips table
+    
+    -- Recreate all blips with the updated storage list
     CreateStorageBlips()
+    DebugMsg("Recreated storage blips after deletion of storage #" .. id)
 end)
 
 RegisterNetEvent('character_storage:updateStorageName')

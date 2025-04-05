@@ -1,8 +1,9 @@
 local VORPcore = exports.vorp_core:GetCore()
 local VORPinv = exports.vorp_inventory
--- DB is now global from database.lua, so no require neededbase
+-- DB is now global from database.lua, so no require needed
 
 local storageCache = {}
+local initialized = false
 
 -- Debug helper function for consistent logging
 function DebugLog(message)
@@ -22,28 +23,24 @@ function RefreshPlayerStorages(source)
     end)
 end
 
--- Load all storages into cache on resource start
-AddEventHandler('onResourceStart', function(resourceName)
-    if resourceName ~= GetCurrentResourceName() then return end
+-- Function to send all available storages to a player
+function SendAllStoragesToPlayer(source)
+    if not source then
+        print("[ERROR] Attempted to send storages to nil source")
+        return
+    end
     
-    DB.GetAllStorages(function(result)
-        if result then
-            for _, storage in ipairs(result) do
-                -- Register inventory for each storage
-                RegisterStorageInventory(storage.id, storage.capacity)
-                storageCache[storage.id] = storage
-            end
-            print(("Loaded %d character storages"):format(#result))
-        end
-    end)
-end)
+    DebugLog("Sending all storages to player: " .. tostring(source))
+    TriggerClientEvent('character_storage:receiveStorages', source, storageCache)
+end
 
 -- Register a custom inventory for a storage
-function RegisterStorageInventory(id, capacity)
+function RegisterStorageInventory(id, capacity, storageData)
     local prefix = "character_storage_" .. id
     
-    -- Get storage name from cache
-    local storageName = (storageCache[id] and storageCache[id].storage_name or ("Storage #" .. id)) .. " | ID:" .. id
+    -- Get storage name from cache or provided data
+    local storage = storageData or storageCache[id] or {}
+    local storageName = (storage.storage_name or ("Storage #" .. id)) .. " | ID:" .. id
     
     -- Remove existing inventory if it exists to avoid conflicts
     if VORPinv:isCustomInventoryRegistered(prefix) then
@@ -61,7 +58,7 @@ function RegisterStorageInventory(id, capacity)
         shared = false,
         ignoreItemStackLimit = true,
         whitelistItems = false,
-        UsePermissions = false, -- Changed to false to match vorp_medic pattern
+        UsePermissions = false,
         UseBlackList = false,
         whitelistWeapons = false,
     }
@@ -69,6 +66,116 @@ function RegisterStorageInventory(id, capacity)
     local success = VORPinv:registerInventory(data)
     DebugLog("Inventory registration result: " .. tostring(success))
     return success
+end
+
+-- Load and initialize all storages
+function LoadAllStorages()
+    if initialized then
+        print("Storage system already initialized")
+        return
+    end
+    
+    print("Initializing character storage system...")
+    
+    DB.LoadAllStoragesFromDatabase(function(storages)
+        if not storages or #storages == 0 then
+            print("No character storages found in database")
+            initialized = true
+            return
+        end
+        
+        -- First update the cache
+        for _, storage in ipairs(storages) do
+            storageCache[storage.id] = storage
+        end
+        
+        -- Now register all inventories
+        local registered = DB.RegisterAllStorageInventories(storages, RegisterStorageInventory)
+        
+        -- Mark initialization as complete
+        initialized = true
+        print(("Character storage system initialized with %d storages"):format(#storages))
+    end)
+end
+
+-- Load all storages into cache on resource start
+AddEventHandler('onResourceStart', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+    
+    LoadAllStorages()
+end)
+
+-- Add a server export to allow other resources to request initialization
+exports('LoadAllStoragesFromDatabase', function()
+    LoadAllStorages()
+    return initialized
+end)
+
+-- Register all storage inventories as a server export
+exports('RegisterAllStorageInventories', function()
+    if not initialized or not next(storageCache) then
+        print("Storage cache not initialized yet")
+        return 0
+    end
+    
+    local storages = {}
+    for _, storage in pairs(storageCache) do
+        table.insert(storages, storage)
+    end
+    
+    return DB.RegisterAllStorageInventories(storages, RegisterStorageInventory)
+end)
+
+-- Handle player loaded event - Push all available storage locations to player
+RegisterServerEvent('vorp:playerSpawn')
+AddEventHandler('vorp:playerSpawn', function(source, newChar, loadedFromRemove)
+    -- In VORP, the first parameter might not be source for this server-side event
+    local playerSource = tonumber(source) -- Ensure it's a number
+    
+    if not playerSource then
+        DebugLog("Error: Invalid source in playerSpawn event")
+        return
+    end
+    
+    -- Short delay to ensure character is fully loaded
+    Wait(2000)
+    
+    -- Send available storage to the player
+    if not initialized then
+        LoadAllStorages() -- Make sure storages are loaded
+    end
+    
+    -- Send all storage locations to the player
+    SendAllStoragesToPlayer(playerSource)
+    DebugLog("Player " .. playerSource .. " spawned, sent " .. (storageCache and next(storageCache) and table.count(storageCache) or 0) .. " storages")
+end)
+
+-- Register event for when character is selected
+RegisterServerEvent('vorp:SelectedCharacter')
+AddEventHandler('vorp:SelectedCharacter', function(playerSource)
+    -- In some VORP versions, the source is passed as parameter instead of being implicit
+    local source = tonumber(playerSource)
+    
+    if not source then
+        DebugLog("Error: Invalid source in SelectedCharacter event")
+        return
+    end
+    
+    -- Short delay to ensure character data is available
+    Wait(2000)
+    
+    -- Send storage data to player after character selection
+    SendAllStoragesToPlayer(source)
+    DebugLog("Player " .. source .. " selected character, sent storages")
+end)
+
+-- Utility function to count table entries
+function table.count(t)
+    local count = 0
+    for _ in pairs(t) do
+        count = count + 1
+    end
+    return count
 end
 
 -- Check if player owns a storage
@@ -682,29 +789,38 @@ RegisterCommand(Config.admindeletestorage, function(source, args, rawCommand)
     local storageId = tonumber(args[1])
     
     if not storageId then
-        VORPcore.NotifyRightTip(source, "Usage: /deletestorage id", 4000)
+        VORPcore.NotifyRightTip(source, GetTranslation("usage_deletestorage"), 4000)
         return
     end
     
     -- Check if storage exists
     if not storageCache[storageId] then
-        VORPcore.NotifyRightTip(source, "Storage not found", 4000)
+        VORPcore.NotifyRightTip(source, GetTranslation("storage_not_found"), 4000)
         return
     end
+    
+    DebugLog("Admin " .. source .. " is deleting storage #" .. storageId)
     
     -- Delete storage
     DB.DeleteStorage(storageId, function(success)
         if success then
-            -- Remove from cache
-            storageCache[storageId] = nil
-            
-            -- Remove inventory
+            -- Remove inventory first
             local prefix = "character_storage_" .. storageId
             VORPinv:removeInventory(prefix)
+            DebugLog("Removed inventory for storage #" .. storageId)
             
-            -- Update all clients
+            -- Remove from cache
+            storageCache[storageId] = nil
+            DebugLog("Removed storage #" .. storageId .. " from server cache")
+            
+            -- Notify all clients to remove this storage from their data
             TriggerClientEvent('character_storage:removeStorage', -1, storageId)
-            VORPcore.NotifyRightTip(source, "Storage #" .. storageId .. " deleted", 4000)
+            DebugLog("Notified all clients to remove storage #" .. storageId)
+            
+            -- Notify the admin
+            VORPcore.NotifyRightTip(source, GetTranslation("storage_deleted", storageId), 4000)
+        else
+            VORPcore.NotifyRightTip(source, "Failed to delete storage #" .. storageId, 4000)
         end
     end)
 end, false)

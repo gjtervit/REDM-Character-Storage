@@ -9,8 +9,8 @@ Config.StorageCreationPrice = 500
 -- Price to increase storage capacity
 Config.StorageUpgradePrice = 100
 
--- Price multiplier for each tier of upgrades (0.25 = 25% increase per tier)
-Config.StorageUpgradePriceMultiplier = 0.25
+-- Price multiplier for each tier of upgrades (0.15 = 15% increase per tier)
+Config.StorageUpgradePriceMultiplier = 0.10
 
 -- Amount to increase storage by
 Config.StorageUpgradeSlots = 20

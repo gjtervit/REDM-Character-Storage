@@ -110,3 +110,32 @@ function DB.GetAllStorages(callback)
         end
     end)
 end
+
+-- New function: Load all storages from database
+function DB.LoadAllStoragesFromDatabase(callback)
+    local query = "SELECT * FROM character_storage"
+    exports.oxmysql:execute(query, {}, function(result)
+        if callback then
+            callback(result or {})
+        end
+    end)
+end
+
+-- New function: Register all storage inventories
+function DB.RegisterAllStorageInventories(storages, registerFunction)
+    if not storages or #storages == 0 then
+        print("No character storages to register")
+        return 0
+    end
+    
+    local count = 0
+    for _, storage in ipairs(storages) do
+        local success = registerFunction(storage.id, storage.capacity, storage)
+        if success then
+            count = count + 1
+        end
+    end
+    
+    print(("Successfully registered %d/%d character storage inventories"):format(count, #storages))
+    return count
+end
