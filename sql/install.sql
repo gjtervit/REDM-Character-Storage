@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS `character_storage` (
 
 
 -- =========================================
--- UPGRADE EXISTING TABLE (1.0.2 → 1.0.3)
+-- UPGRADE EXISTING TABLE (1.0.3 → 1.0.4+)
 -- =========================================
 ALTER TABLE `character_storage`
   ADD COLUMN `authorized_jobs` TEXT NOT NULL DEFAULT '{}';
