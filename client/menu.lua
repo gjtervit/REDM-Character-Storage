@@ -9,6 +9,12 @@ local currentStorageId = nil
 
 local function UpdateStorages(storages)
     playerStorages = storages
+    -- Ensure authorized_jobs is at least an empty table if not present
+    for _, storage in pairs(playerStorages) do
+        if storage.authorized_jobs == nil then
+            storage.authorized_jobs = '{}' -- Store as JSON string initially
+        end
+    end
 end
 
 -- Helper function to get translation
@@ -161,6 +167,11 @@ function OpenAccessManagementMenu(storageId)
             label = GetTranslation("view_remove_player"),
             value = "viewremove",
             desc = GetTranslation("manage_players_desc")
+        },
+        {
+            label = GetTranslation("manage_job_access_option"),
+            value = "jobaccess",
+            desc = GetTranslation("manage_job_access_desc")
         }
     }
     
@@ -200,6 +211,9 @@ function OpenAccessManagementMenu(storageId)
         elseif action == "viewremove" then
             menu.close()
             OpenRemovePlayersMenu(storageId)
+        elseif action == "jobaccess" then
+            menu.close()
+            OpenJobAccessManagementMenu(storageId)
         elseif action == "back" then
             menu.close()
             OpenOwnerStorageMenu(storageId)
@@ -423,11 +437,6 @@ function OpenAddPlayerMenu(storageId)
             desc = GetTranslation("nearby_players_desc")
         },
         {
-            label = GetTranslation("enter_player_name"),
-            value = "manual",
-            desc = GetTranslation("manual_player_desc")
-        },
-        {
             label = GetTranslation("back_menu"),
             value = "back",
             desc = GetTranslation("manage_players_desc")
@@ -445,9 +454,6 @@ function OpenAddPlayerMenu(storageId)
             menu.close()
             -- Request online players from server
             TriggerServerEvent('character_storage:getOnlinePlayers')
-        elseif data.current.value == "manual" then
-            menu.close()
-            OpenAddPlayerManualMenu(storageId)
         elseif data.current.value == "back" then
             menu.close()
             OpenAccessManagementMenu(storageId)
@@ -455,104 +461,6 @@ function OpenAddPlayerMenu(storageId)
     end, function(data, menu)
         menu.close()
         OpenAccessManagementMenu(storageId)
-    end)
-end
-
--- Function to display nearby players menu
-function DisplayNearbyPlayersMenu()
-    if not currentStorageId then return end -- Safety check
-    
-    MenuData.CloseAll()
-    
-    -- Sort players by distance
-    table.sort(nearbyPlayers, function(a, b)
-        return a.distance < b.distance
-    end)
-    
-    local elements = {}
-    
-    -- Add each player to the menu
-    for _, player in pairs(nearbyPlayers) do
-        table.insert(elements, {
-            label = player.name,
-            value = player.charId,
-            desc = GetTranslation("nearby_player_desc", player.charId, player.serverId)
-        })
-    end
-    
-    -- Add back option
-    table.insert(elements, {
-        label = GetTranslation("back_menu"),
-        value = "back",
-        desc = GetTranslation("manage_players_desc")
-    })
-    
-    MenuData.Open("default", GetCurrentResourceName(), "nearby_players_menu",
-    {
-        title = GetTranslation("nearby_players"),
-        subtext = GetTranslation("add_player"),
-        align = "top-right",
-        elements = elements
-    }, function(data, menu)
-        if data.current.value == "back" then
-            menu.close()
-            OpenAddPlayerMenu(currentStorageId) -- Use stored ID
-        else
-            -- Get player name from charId
-            local selectedName = ""
-            local selectedCharId = data.current.value
-            
-            for _, player in pairs(nearbyPlayers) do
-                if player.charId == selectedCharId then
-                    selectedName = player.name
-                    break
-                end
-            end
-            
-            -- Extract first and last name
-            local firstName, lastName = string.match(selectedName, "(%S+)%s+(%S+)")
-            
-            -- Add player to storage
-            if firstName and lastName then
-                TriggerServerEvent('character_storage:addUser', currentStorageId, firstName, lastName)
-                menu.close()
-                Wait(500)
-                OpenAccessManagementMenu(currentStorageId)
-            else
-                VORPcore.NotifyObjective(GetTranslation("player_not_found"), 4000)
-                menu.close()
-                OpenAccessManagementMenu(currentStorageId)
-            end
-        end
-    end, function(data, menu)
-        menu.close()
-        OpenAddPlayerMenu(currentStorageId) -- Use stored ID for going back
-    end)
-end
-
--- Rename the current function to clarify it's manual entry
-function OpenAddPlayerManualMenu(storageId)
-    if not storageId then return end -- Safety check
-    
-    -- First, get the first name
-    TriggerEvent("syn_inputs:sendinputs", GetTranslation("confirm"), GetTranslation("enter_first_name"), function(firstName)
-        if firstName and firstName ~= "" then
-            -- Then get the last name
-            TriggerEvent("syn_inputs:sendinputs", GetTranslation("confirm"), GetTranslation("enter_last_name"), function(lastName)
-                if lastName and lastName ~= "" then
-                    -- Add the player to the authorized users
-                    TriggerServerEvent('character_storage:addUser', storageId, firstName, lastName)
-                    Wait(500)
-                    OpenAccessManagementMenu(storageId)
-                else
-                    -- Return to access management if canceled or empty
-                    OpenAccessManagementMenu(storageId)
-                end
-            end)
-        else
-            -- Return to access management if canceled or empty
-            OpenAccessManagementMenu(storageId)
-        end
     end)
 end
 
@@ -680,6 +588,202 @@ function OpenCreateStorageMenu()
     end)
 end
 
+-- Add new functions for Job Access Management
+function OpenJobAccessManagementMenu(storageId)
+    MenuData.CloseAll()
+    local storage = nil
+    for _, s in pairs(playerStorages) do
+        if s.id == storageId then
+            storage = s
+            break
+        end
+    end
+
+    if not storage then return end
+
+    local authorizedJobs = json.decode(storage.authorized_jobs or '{}')
+    local elements = {}
+
+    for jobName, rule in pairs(authorizedJobs) do
+        local gradesDisplay = "All Grades"
+        if not rule.all_grades and rule.grades and #rule.grades > 0 then
+            gradesDisplay = "Grades: " .. table.concat(rule.grades, ", ")
+        elseif not rule.all_grades and (not rule.grades or #rule.grades == 0) then
+             gradesDisplay = "No specific grades (effectively no access unless 'All Grades' is set)"
+        end
+        table.insert(elements, {
+            label = GetTranslation("remove_job_rule_option", jobName .. " (" .. gradesDisplay .. ")"),
+            value = "removejob_" .. jobName,
+            desc = GetTranslation("remove_job_rule_desc", jobName)
+        })
+    end
+
+    table.insert(elements, {
+        label = GetTranslation("add_new_job_rule"),
+        value = "addjob",
+        desc = GetTranslation("add_job_rule_desc")
+    })
+    table.insert(elements, {
+        label = GetTranslation("back_menu"),
+        value = "back"
+    })
+
+    local storageNameDisplay = storage.storage_name or GetTranslation("storage_title", storageId)
+    MenuData.Open("default", GetCurrentResourceName(), "job_access_menu", {
+        title = storageNameDisplay,
+        subtext = GetTranslation("job_access_management"),
+        align = "top-right",
+        elements = elements
+    }, function(data, menu)
+        local value = data.current.value
+        if value == "addjob" then
+            menu.close()
+            OpenAddOrEditJobRuleMenu(storageId)
+        elseif value == "back" then
+            menu.close()
+            OpenAccessManagementMenu(storageId)
+        elseif string.sub(value, 1, 10) == "removejob_" then
+            local jobNameToRemove = string.sub(value, 11)
+            menu.close()
+            ConfirmRemoveJobRule(storageId, jobNameToRemove)
+        end
+    end, function(data, menu)
+        menu.close()
+        OpenAccessManagementMenu(storageId)
+    end)
+end
+
+function OpenAddOrEditJobRuleMenu(storageId, existingJobName)
+    MenuData.CloseAll()
+    local storage = nil
+    for _, s in pairs(playerStorages) do
+        if s.id == storageId then storage = s break end
+    end
+    if not storage then return end
+
+    local authorizedJobs = json.decode(storage.authorized_jobs or '{}')
+    local currentRule = existingJobName and authorizedJobs[existingJobName] or {}
+    local currentInputStr = ""
+
+    if existingJobName then
+        currentInputStr = existingJobName
+        if currentRule.all_grades then
+            currentInputStr = currentInputStr .. " all"
+        elseif currentRule.grades and #currentRule.grades > 0 then
+            currentInputStr = currentInputStr .. " " .. table.concat(currentRule.grades, ",")
+        end
+    end
+
+    local title = existingJobName and GetTranslation("edit_job_rule_title", existingJobName) or GetTranslation("add_job_rule_title")
+    local subtext = GetTranslation("enter_job_and_grades_desc")
+
+    TriggerEvent("syn_inputs:sendinputs", GetTranslation("confirm"), GetTranslation("enter_job_rule"), function(inputResult)
+        local fullInput = inputResult and tostring(inputResult) or ""
+        fullInput = fullInput:match("^%s*(.-)%s*$") -- Trim whitespace
+
+        if fullInput == "" then
+            OpenJobAccessManagementMenu(storageId) -- Cancelled or empty input
+            return
+        end
+
+        local jobName, gradesStr
+        -- Find the last space in the input string.
+        -- The part before it is the job name, the part after is the grades string.
+        local lastSpacePos
+        for i = #fullInput, 1, -1 do
+            if string.sub(fullInput, i, i) == " " then
+                lastSpacePos = i
+                break
+            end
+        end
+        
+        if lastSpacePos then
+            jobName = string.sub(fullInput, 1, lastSpacePos - 1):match("^%s*(.-)%s*$") -- Text before last space
+            gradesStr = string.sub(fullInput, lastSpacePos + 1):match("^%s*(.-)%s*$") -- Text after last space
+        else
+            -- No space found, assume the whole input is the job name and grades are "all"
+            jobName = fullInput
+            gradesStr = "all"
+        end
+        
+        -- Do NOT convert jobName to lowercase here. Keep its original casing.
+
+        if not jobName or jobName == "" then
+            VORPcore.NotifyRightTip(GetTranslation("invalid_job_rule_format"), 4000)
+            OpenJobAccessManagementMenu(storageId)
+            return
+        end
+
+        local ruleData = {}
+        gradesStr = string.lower(gradesStr) -- Convert only the grades part to lowercase
+
+        if gradesStr == "all" then
+            ruleData.all_grades = true
+        else
+            ruleData.grades = {}
+            ruleData.all_grades = false
+            for grade in string.gmatch(gradesStr, "[^,%s]+") do
+                local numGrade = tonumber(grade)
+                if numGrade ~= nil then
+                    table.insert(ruleData.grades, numGrade)
+                else
+                    -- If any part of the grades string is not a number and not "all", it's invalid.
+                    VORPcore.NotifyRightTip(GetTranslation("invalid_job_rule_format"), 4000)
+                    OpenJobAccessManagementMenu(storageId)
+                    return
+                end
+            end
+            if #ruleData.grades == 0 and gradesStr ~= "" then -- e.g. "police abc"
+                 VORPcore.NotifyRightTip(GetTranslation("invalid_job_rule_format"), 4000)
+                 OpenJobAccessManagementMenu(storageId)
+                 return
+            end
+        end
+        
+        -- If gradesStr was empty but not "all" and no numbers were parsed, treat as "all" if jobName is valid
+        if not ruleData.all_grades and (#ruleData.grades == 0 and gradesStr == "") then
+             ruleData.all_grades = true -- Default to all if only job name is provided
+        end
+
+
+        if ruleData.all_grades or #ruleData.grades > 0 then
+            TriggerServerEvent('character_storage:updateJobAccess', storageId, jobName, ruleData)
+            Wait(500) 
+            OpenJobAccessManagementMenu(storageId)
+        else
+            VORPcore.NotifyRightTip(GetTranslation("invalid_job_rule_format"), 4000)
+            OpenJobAccessManagementMenu(storageId)
+        end
+    end, currentInputStr, subtext) -- Pass current rule as default input and new subtext
+end
+
+function ConfirmRemoveJobRule(storageId, jobName)
+    MenuData.CloseAll()
+    local elements = {
+        {label = GetTranslation("yes_remove_job_rule"), value = "yes"},
+        {label = GetTranslation("no_cancel"), value = "no"}
+    }
+    MenuData.Open("default", GetCurrentResourceName(), "confirm_remove_job_rule", {
+        title = GetTranslation("confirm_job_rule_removal"),
+        subtext = GetTranslation("remove_job_access_text", jobName),
+        align = "top-right",
+        elements = elements
+    }, function(data, menu)
+        if data.current.value == "yes" then
+            TriggerServerEvent('character_storage:updateJobAccess', storageId, jobName, nil) -- nil ruleData means remove
+            menu.close()
+            Wait(500)
+            OpenJobAccessManagementMenu(storageId)
+        else
+            menu.close()
+            OpenJobAccessManagementMenu(storageId)
+        end
+    end, function(data, menu)
+        menu.close()
+        OpenJobAccessManagementMenu(storageId)
+    end)
+end
+
 -- Register network events for opening menus
 RegisterNetEvent('character_storage:openOwnerMenu')
 AddEventHandler('character_storage:openOwnerMenu', function(storageId)
@@ -709,7 +813,7 @@ end)
 RegisterNetEvent('character_storage:receiveStorages')
 AddEventHandler('character_storage:receiveStorages', function(storages)
     DebugMsg("Received updated storage data from server")
-    playerStorages = storages or {}
+    UpdateStorages(storages or {}) -- Call the updated function
     -- Any active menus may need to be refreshed here
 end)
 

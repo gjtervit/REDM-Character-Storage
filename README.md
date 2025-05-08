@@ -60,9 +60,7 @@ See the config.lua file for detailed configuration options including:
 - Language options
 
 ## Version History
-- 1.0.2 - Language updates and multiplier config for slot upgrades
-- 1.0.1 - Added version checking system, bug fixes
-- 1.0.0 - Initial release
+- See version file for full change logs.
 
 ## License
 [MIT License](LICENSE)

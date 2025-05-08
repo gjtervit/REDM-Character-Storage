@@ -12,12 +12,31 @@ function DebugLog(message)
     print("[Server Debug] " .. message)
 end
 
+-- Helper function for shallow copy
+function shallowcopy(orig)
+    local orig_type = type(orig)
+    local copy
+    if orig_type == 'table' then
+        copy = {}
+        for orig_key, orig_value in pairs(orig) do
+            copy[orig_key] = orig_value
+        end
+    else -- number, string, boolean, etc
+        copy = orig
+    end
+    return copy
+end
+
 -- Helper function to refresh a player's storages
 function RefreshPlayerStorages(source)
     local Character = VORPcore.getUser(source).getUsedCharacter
     local charId = Character.charIdentifier
     
     DB.GetAccessibleStorages(charId, function(storages)
+        -- Ensure authorized_jobs is included, even if empty
+        for i, s in ipairs(storages) do
+            storages[i].authorized_jobs = s.authorized_jobs or '{}'
+        end
         TriggerClientEvent('character_storage:receiveStorages', source, storages)
         DebugLog("Refreshed storage data for player " .. source)
     end)
@@ -31,16 +50,55 @@ function SendAllStoragesToPlayer(source)
     end
     
     DebugLog("Sending all storages to player: " .. tostring(source))
-    TriggerClientEvent('character_storage:receiveStorages', source, storageCache)
+    local storagesToSend = {}
+    for id, storageData_cached_entry in pairs(storageCache) do
+        local s = shallowcopy(storageData_cached_entry) 
+
+        s.authorized_jobs = storageData_cached_entry.authorized_jobs or '{}'
+        -- Remove server-side only config fields if they were copied and not needed by client for basic display
+        s.authorized_jobs_config = nil
+        s.authorized_charids_config = nil
+
+        -- Ensure .locations is correctly populated for client for ALL types
+        if storageData_cached_entry.isPreset then
+            -- For presets (linked or non-linked instances), .locations should already be set correctly 
+            -- in storageData_cached_entry by LoadAllStorages. shallowcopy(s) would have copied it.
+            if not s.locations or #s.locations == 0 then
+                 DebugLog("Error: Preset storage ID " .. id .. " has missing or empty locations in SendAllStoragesToPlayer. Blip might not show.")
+            end
+        elseif not storageData_cached_entry.isPreset and storageData_cached_entry.pos_x then -- DB storage
+            s.locations = { vector3(storageData_cached_entry.pos_x, storageData_cached_entry.pos_y, storageData_cached_entry.pos_z) }
+        else
+            -- This case should ideally not be hit if all storages are well-formed
+            DebugLog("Warning: Storage ID " .. id .. " is neither a preset with locations nor a DB storage with pos_x. Blip might not show.")
+            s.locations = {} -- Ensure .locations exists to prevent client error, even if empty
+        end
+        table.insert(storagesToSend, s)
+    end
+    TriggerClientEvent('character_storage:receiveStorages', source, storagesToSend)
 end
 
 -- Register a custom inventory for a storage
 function RegisterStorageInventory(id, capacity, storageData)
     local prefix = "character_storage_" .. id
     
-    -- Get storage name from cache or provided data
     local storage = storageData or storageCache[id] or {}
-    local storageName = (storage.storage_name or ("Storage #" .. id)) .. " | ID:" .. id
+    local storageNameDisplay
+
+    if storage.isPreset then
+        if storage.linked then -- Linked preset (e.g., police_armory_main)
+            storageNameDisplay = storage.name or "Preset Storage" -- e.g., "Evidence and Storage"
+        else -- Non-linked preset instance
+            local baseInstanceName = storage.storage_name -- This is the formatted name like "Notice Board (St Denis)"
+            if storage.location_index then
+                storageNameDisplay = baseInstanceName .. " #" .. storage.location_index -- e.g., "Notice Board (St Denis) #1"
+            else
+                storageNameDisplay = baseInstanceName -- Fallback if index somehow missing
+            end
+        end
+    else -- DB storage
+        storageNameDisplay = (storage.storage_name or "Storage") .. " #" .. id -- e.g., "My Stash #123"
+    end
     
     -- Remove existing inventory if it exists to avoid conflicts
     if VORPinv:isCustomInventoryRegistered(prefix) then
@@ -52,10 +110,10 @@ function RegisterStorageInventory(id, capacity, storageData)
     DebugLog("Registering inventory: " .. prefix .. " with capacity " .. capacity)
     local data = {
         id = prefix,
-        name = storageName,
+        name = storageNameDisplay,
         limit = capacity,
         acceptWeapons = true,
-        shared = false,
+        shared = true, 
         ignoreItemStackLimit = true,
         whitelistItems = false,
         UsePermissions = false,
@@ -78,23 +136,74 @@ function LoadAllStorages()
     print("Initializing character storage system...")
     
     DB.LoadAllStoragesFromDatabase(function(storages)
-        if not storages or #storages == 0 then
-            print("No character storages found in database")
-            initialized = true
-            return
-        end
+        if not storages then storages = {} end -- Ensure storages is a table
         
-        -- First update the cache
+        -- Process DB storages first
         for _, storage in ipairs(storages) do
             storageCache[storage.id] = storage
+            storageCache[storage.id].authorized_jobs = storage.authorized_jobs or '{}'
+            storageCache[storage.id].isPreset = false -- Explicitly mark as not preset
         end
         
-        -- Now register all inventories
-        local registered = DB.RegisterAllStorageInventories(storages, RegisterStorageInventory)
+        -- Process Preset Storages from Config.DefaultStorages
+        if Config.DefaultStorages and #Config.DefaultStorages > 0 then
+            for _, preset in ipairs(Config.DefaultStorages) do
+                if preset.linked then
+                    -- Linked storage: one inventory for all locations
+                    local cacheEntry = shallowcopy(preset)
+                    cacheEntry.storage_name = preset.name -- Use 'name' from config as 'storage_name'
+                    cacheEntry.authorized_users = '[]' 
+                    cacheEntry.owner_charid = preset.owner_charid or 0 
+                    cacheEntry.isPreset = true
+                    cacheEntry.linked = true -- Mark as linked
+                    cacheEntry.authorized_jobs_config = preset.authorized_jobs 
+                    cacheEntry.authorized_jobs = json.encode(preset.authorized_jobs or {}) 
+                    cacheEntry.authorized_charids_config = preset.authorized_charids or {}
+
+                    storageCache[preset.id] = cacheEntry
+                    RegisterStorageInventory(preset.id, preset.capacity, cacheEntry)
+                    DebugLog("Registered LINKED preset storage: " .. preset.id .. " (" .. preset.name .. ")")
+                else
+                    -- Non-linked: each location is a separate storage instance
+                    if preset.id_prefix and preset.locations then
+                        for i, locData in ipairs(preset.locations) do
+                            local instanceId = preset.id_prefix .. "_loc" .. i
+                            local instanceName = string.format(preset.name_template or preset.name or "Preset Storage %s", locData.name_detail or i)
+                            
+                            local cacheEntry = shallowcopy(preset)
+                            cacheEntry.id = instanceId 
+                            cacheEntry.storage_name = instanceName
+                            cacheEntry.name = instanceName -- Also set .name for client consistency if it expects .name for non-linked presets
+                            cacheEntry.pos_x = locData.coords.x
+                            cacheEntry.pos_y = locData.coords.y
+                            cacheEntry.pos_z = locData.coords.z
+                            cacheEntry.locations = {locData.coords} 
+                            cacheEntry.authorized_users = '[]'
+                            cacheEntry.owner_charid = preset.owner_charid or 0
+                            cacheEntry.isPreset = true
+                            cacheEntry.linked = false -- Mark as non-linked
+                            cacheEntry.location_index = i -- Store the index of this location
+                            cacheEntry.authorized_jobs_config = preset.authorized_jobs
+                            cacheEntry.authorized_jobs = json.encode(preset.authorized_jobs or {})
+                            cacheEntry.authorized_charids_config = preset.authorized_charids or {}
+
+                            storageCache[instanceId] = cacheEntry
+                            RegisterStorageInventory(instanceId, preset.capacity, cacheEntry)
+                            DebugLog("Registered NON-LINKED preset storage instance: " .. instanceId .. " (" .. instanceName .. ") Index: " .. i)
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Register inventories for DB storages (after presets, in case of ID conflicts, though unlikely)
+        local dbStoragesToRegister = {}
+        for _, s_data in ipairs(storages) do table.insert(dbStoragesToRegister, s_data) end
+        DB.RegisterAllStorageInventories(dbStoragesToRegister, RegisterStorageInventory)
         
         -- Mark initialization as complete
         initialized = true
-        print(("Character storage system initialized with %d storages"):format(#storages))
+        print(("Character storage system initialized. DB Storages: %d, Preset Configs: %d. Total in cache: %d"):format(#storages, Config.DefaultStorages and #Config.DefaultStorages or 0, table.count(storageCache)))
     end)
 end
 
@@ -185,21 +294,66 @@ function IsStorageOwner(charId, storageId)
 end
 
 -- Check if player has access to a storage
-function HasStorageAccess(charId, storageId)
+function HasStorageAccess(charId, storageId, playerJob, playerJobGrade)
     local storage = storageCache[storageId]
     
     if not storage then return false end
+
+    -- Handle Preset Storages
+    if storage.isPreset then
+        -- Check authorized_charids from config
+        if storage.authorized_charids_config then
+            for _, allowedCharId in ipairs(storage.authorized_charids_config) do
+                if tonumber(allowedCharId) == tonumber(charId) then
+                    return true
+                end
+            end
+        end
+        -- Check job-based access from config
+        if playerJob and playerJobGrade ~= nil and storage.authorized_jobs_config then
+            local jobRules = storage.authorized_jobs_config[playerJob]
+            if jobRules then
+                if jobRules.all_grades then
+                    return true
+                elseif jobRules.grades then
+                    for _, grade in ipairs(jobRules.grades) do
+                        if tonumber(grade) == tonumber(playerJobGrade) then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+        return false -- If no explicit charid or job match for preset
+    end
     
-    -- Owner always has access
+    -- Owner always has access (for DB storages)
     if tonumber(storage.owner_charid) == tonumber(charId) then
         return true
     end
     
-    -- Check authorized users
+    -- Check authorized users (personal access)
     local authorizedUsers = json.decode(storage.authorized_users or '[]')
     for _, id in pairs(authorizedUsers) do
         if tonumber(id) == tonumber(charId) then
             return true
+        end
+    end
+
+    -- Check job-based access
+    if playerJob and playerJobGrade ~= nil then
+        local authorizedJobs = json.decode(storage.authorized_jobs or '{}')
+        if authorizedJobs[playerJob] then
+            local jobRule = authorizedJobs[playerJob]
+            if jobRule.all_grades then
+                return true
+            elseif jobRule.grades then
+                for _, grade in ipairs(jobRule.grades) do
+                    if tonumber(grade) == tonumber(playerJobGrade) then
+                        return true
+                    end
+                end
+            end
         end
     end
     
@@ -237,10 +391,18 @@ AddEventHandler('character_storage:createStorage', function()
                 Character.removeCurrency(0, Config.StorageCreationPrice)
                 
                 -- Register inventory for new storage
-                RegisterStorageInventory(storageId, Config.DefaultCapacity)
+                -- For DB storages, storageData passed to RegisterStorageInventory will have isPreset=false
+                local newDbStorageData = {
+                    id = storageId,
+                    storage_name = name,
+                    capacity = Config.DefaultCapacity,
+                    isPreset = false -- Ensure this is set for RegisterStorageInventory logic
+                }
+                RegisterStorageInventory(storageId, Config.DefaultCapacity, newDbStorageData)
                 
                 -- Cache the new storage
                 DB.GetStorage(storageId, function(storage)
+                    storage.isPreset = false -- Ensure flag is correct in cache
                     storageCache[storageId] = storage
                     
                     -- Notify client
@@ -258,7 +420,10 @@ AddEventHandler('character_storage:createStorage', function()
                         owner_charid = charId,
                         storage_name = name,
                         capacity = Config.DefaultCapacity,
-                        authorized_users = '[]'
+                        authorized_users = '[]',
+                        authorized_jobs = '{}', -- Add this
+                        isPreset = false, -- Explicitly send isPreset
+                        linked = false -- DB storages are not linked in the preset sense
                     })
                 end)
             end
@@ -287,29 +452,15 @@ AddEventHandler("character_storage:openStorage", function(storageId)
     -- Get character ID of requesting player
     local Character = VORPcore.getUser(_source).getUsedCharacter
     local charId = Character.charIdentifier
+    local playerJob = Character.job
+    local playerJobGrade = Character.jobGrade
     
-    DebugLog("Player charId=" .. charId .. " requesting access to storage owned by " .. storage.owner_charid)
+    DebugLog("Player charId=" .. charId .. " (Job: " .. playerJob .. ", Grade: " .. playerJobGrade .. ") requesting access to storage owned by " .. storage.owner_charid)
     
     -- Verify access
-    local hasAccess = false
-    if tonumber(storage.owner_charid) == tonumber(charId) then
-        hasAccess = true
-        DebugLog("Access granted: Player is owner")
-    else
-        -- Check authorized users
-        local authorizedUsers = json.decode(storage.authorized_users or "[]")
-        for _, id in pairs(authorizedUsers) do
-            if tonumber(id) == tonumber(charId) then
-                hasAccess = true
-                DebugLog("Access granted: Player is authorized")
-                break
-            end
-        end
-    end
-    
-    if not hasAccess then
+    if not HasStorageAccess(charId, storageId, playerJob, playerJobGrade) then
         DebugLog("Access denied for player " .. charId)
-        VORPcore.NotifyRightTip(_source, "You don't have access to this storage", 3000)
+        VORPcore.NotifyRightTip(_source, GetTranslation("no_permission"), 4000)
         return
     end
     
@@ -355,18 +506,36 @@ AddEventHandler('character_storage:checkOwnership', function(storageId)
     local Character = VORPcore.getUser(source).getUsedCharacter
     local charId = Character.charIdentifier
     local group = Character.group
+    local playerJob = Character.job
+    local playerJobGrade = Character.jobGrade
     
     -- Check if storage exists
     if not storageCache[storageId] then
         VORPcore.NotifyRightTip(source, "Storage not found", 4000)
         return
     end
+
+    local storageData = storageCache[storageId]
+
+    -- Handle Preset Storages: No owner menu, direct open if access
+    if storageData.isPreset then
+        if HasStorageAccess(charId, storageId, playerJob, playerJobGrade) then
+            local prefix = "character_storage_" .. storageId -- For presets, storageId is the inventory ID
+            if not VORPinv:isCustomInventoryRegistered(prefix) then
+                 RegisterStorageInventory(storageId, storageData.capacity, storageData)
+            end
+            VORPinv:openInventory(source, prefix)
+        else
+            VORPcore.NotifyRightTip(source, GetTranslation("no_permission"), 4000)
+        end
+        return
+    end
     
-    -- If player is owner, show the owner menu
+    -- If player is owner (DB storage), show the owner menu
     if IsStorageOwner(charId, storageId) then
         TriggerClientEvent('character_storage:openOwnerMenu', source, storageId)
-    -- If player has access or is admin, open storage directly
-    elseif HasStorageAccess(charId, storageId) or group == "admin" then
+    -- If player has access (personal, job, or admin), open storage directly
+    elseif HasStorageAccess(charId, storageId, playerJob, playerJobGrade) or group == "admin" then
         local prefix = "character_storage_" .. storageId
         VORPinv:openInventory(source, prefix)
     else
@@ -392,6 +561,12 @@ AddEventHandler('character_storage:addUser', function(storageId, firstname, last
     local source = source
     local Character = VORPcore.getUser(source).getUsedCharacter
     local charId = Character.charIdentifier
+
+    -- Prevent managing preset storages this way
+    if storageCache[storageId] and storageCache[storageId].isPreset then
+        VORPcore.NotifyRightTip(source, "Preset storages cannot be managed this way.", 4000)
+        return
+    end
     
     -- Check if player is storage owner
     if not IsStorageOwner(charId, storageId) then
@@ -467,6 +642,12 @@ AddEventHandler('character_storage:removeUser', function(storageId, targetCharId
     local source = source
     local Character = VORPcore.getUser(source).getUsedCharacter
     local charId = Character.charIdentifier
+
+    -- Prevent managing preset storages this way
+    if storageCache[storageId] and storageCache[storageId].isPreset then
+        VORPcore.NotifyRightTip(source, "Preset storages cannot be managed this way.", 4000)
+        return
+    end
     
     -- Check if player is storage owner
     if not IsStorageOwner(charId, storageId) then
@@ -522,6 +703,13 @@ AddEventHandler('character_storage:removeAccess', function(storageId, targetChar
     -- Ensure proper type conversion
     storageId = tonumber(storageId)
     targetCharId = tonumber(targetCharId)
+
+    -- Prevent managing preset storages this way
+    if storageCache[storageId] and storageCache[storageId].isPreset then
+        VORPcore.NotifyRightTip(source, "Preset storages cannot be managed this way.", 4000)
+        DebugLog("Attempt to manage preset storage " .. storageId .. " via removeAccess denied.")
+        return
+    end
     
     if not storageId or not targetCharId then
         DebugLog("ERROR: Invalid IDs after conversion")
@@ -629,6 +817,12 @@ AddEventHandler('character_storage:upgradeStorage', function(storageId)
     local source = source
     local Character = VORPcore.getUser(source).getUsedCharacter
     local charId = Character.charIdentifier
+
+    -- Prevent managing preset storages this way
+    if storageCache[storageId] and storageCache[storageId].isPreset then
+        VORPcore.NotifyRightTip(source, "Preset storages cannot be upgraded.", 4000)
+        return
+    end
     
     -- Check if player is storage owner
     if not IsStorageOwner(charId, storageId) then
@@ -682,6 +876,12 @@ AddEventHandler('character_storage:renameStorage', function(storageId, newName)
     local source = source
     local Character = VORPcore.getUser(source).getUsedCharacter
     local charId = Character.charIdentifier
+
+    -- Prevent managing preset storages this way
+    if storageCache[storageId] and storageCache[storageId].isPreset then
+        VORPcore.NotifyRightTip(source, "Preset storages cannot be renamed.", 4000)
+        return
+    end
     
     -- Check if player is storage owner
     if not IsStorageOwner(charId, storageId) then
@@ -702,6 +902,7 @@ AddEventHandler('character_storage:renameStorage', function(storageId, newName)
             -- Get the current inventory data to preserve its settings
             local prefix = "character_storage_" .. storageId
             local currentStorage = storageCache[storageId]
+            currentStorage.isPreset = false -- Ensure it's marked as not a preset for RegisterStorageInventory
             
             -- Remove existing inventory and re-register with new name
             VORPinv:removeInventory(prefix)
@@ -709,10 +910,10 @@ AddEventHandler('character_storage:renameStorage', function(storageId, newName)
             -- Re-register the inventory with the new name
             local data = {
                 id = prefix,
-                name = newName .. " | ID:" .. storageId,
+                name = newName .. " #" .. storageId, -- For DB storage, name includes #id
                 limit = currentStorage.capacity,
                 acceptWeapons = true,
-                shared = false,
+                shared = true,
                 ignoreItemStackLimit = true,
                 whitelistItems = false,
                 UsePermissions = false,
@@ -891,6 +1092,60 @@ end)
 -- Expose Database API for external use
 exports('GetDatabaseAPI', function()
     return DB
+end)
+
+-- New event to update job access rules
+RegisterServerEvent('character_storage:updateJobAccess')
+AddEventHandler('character_storage:updateJobAccess', function(storageId, jobName, ruleData)
+    local source = source
+    local Character = VORPcore.getUser(source).getUsedCharacter
+    local charId = Character.charIdentifier
+
+    -- Prevent managing preset storages this way
+    if storageCache[storageId] and storageCache[storageId].isPreset then
+        VORPcore.NotifyRightTip(source, "Job access for preset storages is managed in the config.", 4000)
+        return
+    end
+
+    if not IsStorageOwner(charId, storageId) then
+        VORPcore.NotifyRightTip(source, GetTranslation("no_permission"), 4000)
+        return
+    end
+
+    local storage = storageCache[storageId]
+    if not storage then
+        VORPcore.NotifyRightTip(source, GetTranslation("storage_not_found"), 4000)
+        return
+    end
+
+    local authorizedJobs = json.decode(storage.authorized_jobs or '{}')
+
+    if ruleData == nil then -- Remove rule
+        if authorizedJobs[jobName] then
+            authorizedJobs[jobName] = nil
+            DB.UpdateAuthorizedJobs(storageId, json.encode(authorizedJobs), function(success)
+                if success then
+                    storage.authorized_jobs = json.encode(authorizedJobs)
+                    VORPcore.NotifyRightTip(source, GetTranslation("job_rule_removed", jobName), 4000)
+                    RefreshPlayerStorages(source)
+                end
+            end)
+        end
+    else -- Add or update rule
+        -- Validate ruleData structure (grades array or all_grades boolean)
+        if (type(ruleData.grades) == "table" or ruleData.all_grades == true) and type(jobName) == "string" and jobName ~= "" then
+            authorizedJobs[jobName] = ruleData
+            DB.UpdateAuthorizedJobs(storageId, json.encode(authorizedJobs), function(success)
+                if success then
+                    storage.authorized_jobs = json.encode(authorizedJobs)
+                    VORPcore.NotifyRightTip(source, GetTranslation("job_rule_added", jobName), 4000)
+                    RefreshPlayerStorages(source)
+                end
+            end)
+        else
+            VORPcore.NotifyRightTip(source, GetTranslation("invalid_job_or_grades"), 4000)
+        end
+    end
 end)
 
 -- Helper function to get translation based on character's language

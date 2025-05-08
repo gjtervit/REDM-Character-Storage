@@ -2,8 +2,8 @@ DB = {}  -- Make DB global instead of local
 
 -- Create a new storage
 function DB.CreateStorage(owner_charid, name, x, y, z, callback)
-    local query = "INSERT INTO character_storage (owner_charid, storage_name, pos_x, pos_y, pos_z, authorized_users, capacity) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    local params = {owner_charid, name, x, y, z, '[]', Config.DefaultCapacity}
+    local query = "INSERT INTO character_storage (owner_charid, storage_name, pos_x, pos_y, pos_z, authorized_users, capacity, authorized_jobs) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    local params = {owner_charid, name, x, y, z, '[]', Config.DefaultCapacity, '{}'}
     exports.oxmysql:execute(query, params, function(result)
         if callback then
             callback(result.insertId)
@@ -138,4 +138,14 @@ function DB.RegisterAllStorageInventories(storages, registerFunction)
     
     print(("Successfully registered %d/%d character storage inventories"):format(count, #storages))
     return count
+end
+
+-- New function: Update authorized jobs for a storage
+function DB.UpdateAuthorizedJobs(id, authorizedJobsJson, callback)
+    local query = "UPDATE character_storage SET authorized_jobs = ? WHERE id = ?"
+    exports.oxmysql:execute(query, {authorizedJobsJson, id}, function(result)
+        if callback then
+            callback(result.affectedRows > 0)
+        end
+    end)
 end

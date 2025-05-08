@@ -1,3 +1,9 @@
+<1.0.4>
+- Added option to create preconfigured storages including linked storages (useful for shared police or doctor storages for example)
+- Added option for players to give specified job access to their storages
+- Improved data consistency for preset storage blip information sent from server to client.
+- Modified script to by default allow shared storage visibility (was off for testing purposes)
+
 <1.0.3>
 - Fixed an issue with storages not loading on server start (requiring a manual restart of the script for storages to appear)
 - Fixed an issue where after deleting a storage, the blip on the map remained and the prompt was interactable

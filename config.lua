@@ -26,7 +26,7 @@ Config.AccessRadius = 2.0
 
 -- Blip settings
 Config.UseBlips = true
-Config.BlipSprite = -1138864184
+Config.BlipSprite = -1138864184 -- Default blip sprite hash (BLIP_CHEST). Find more at https://redlookup.com/blips
 
 -- Prompt settings
 Config.PromptKey = 0x760A9C6F -- G key
@@ -43,6 +43,53 @@ Config.DefaultLanguage = "english" -- Default language: "english" or "spanish"
 Config.CheckForUpdates = true        -- Whether to check for updates on script start
 Config.ShowUpdateNotifications = true -- Show notifications to admins when updates are available
 Config.AutoUpdate = false            -- Attempt to automatically update (not fully implemented)
+
+-- Preset Storages (not in DB, managed by config)
+Config.DefaultStorages = {
+    {
+        id = "police_armory_main", -- Unique ID for this preset storage configuration
+        name = "Evidence and Storage",
+        locations = {
+            vector3(2908.03, 1308.82, 44.99), -- Annesburg Police Station
+            vector3(-5531.36, -2929.99, -1.31),   -- Tumbleweed Police Station
+            vector3(-3621.33, -2607.36, -13.29), -- Armadillo Police Station
+            vector3(-764.84, -1272.38, 44.09),   -- Blackwater Police Station
+            vector3(2507.56, -1301.95, 49.0),    -- St. Denis Police Station
+            vector3(1361.99, -1302.32, 77.85),  -- Rhodes Police Station
+            vector3(-1812.37, -355.89, 164.7),  -- Strawberry Police Station
+            vector3(-278.52, 805.04, 119.43)   -- Valentine Police Station
+        },
+        linked = true, -- True: all locations share one inventory. False: each location is a separate instance.
+        capacity = 5000,
+        blipSprite = -693644997, -- Example: Hash for blip_ambient_sheriff. Replace with actual hash or string name.
+        authorized_jobs = {
+            ["Lemoyne"] = { all_grades = true },
+            ["NewHanover"] = { all_grades = true },
+            ["WestElizabeth"] = { all_grades = true },
+            ["NewAustin"] = { all_grades = true },
+            ["DOJM"] = { all_grades = true }
+        },
+        authorized_charids = {}, -- Optional: list of specific charIDs that can access
+        -- owner_charid = nil, -- Not typically needed for job/shared storages
+        isPreset = true -- Internal flag
+    },
+    -- Example of non-linked preset storages (each location is a separate storage instance)
+    -- {
+    --     id_prefix = "town_notice_board", -- Used to generate unique IDs like "town_notice_board_loc1"
+    --     name_template = "Notice Board (%s)", -- %s will be replaced by town name or index
+    --     locations = {
+    --         { coords = vector3(2400.0, -1700.0, 45.0), name_detail = "St Denis" },
+    --         { coords = vector3(-300.0, 800.0, 118.0), name_detail = "Valentine" }
+    --     },
+    --     linked = false,
+    --     capacity = 50,
+    --     blipSprite = -1138864184, -- Example: Hash for BLIP_CHEST. Find more at https://redlookup.com/blips
+    --     authorized_jobs = { -- Example: only accessible by a "town_crier" job
+    --         ["town_crier"] = { all_grades = true }
+    --     },
+    --     isPreset = true
+    -- }
+}
 
 -- Translation system
 Config.Translations = {
@@ -64,6 +111,11 @@ Config.Translations = {
         ["already_has_access"] = "This player already has access",
         ["error_removing"] = "Error removing player access",
         ["removal_success"] = "Removing access for %s",
+        ["job_access_updated"] = "Job access rules updated successfully",
+        ["job_rule_added"] = "Job access rule added for %s",
+        ["job_rule_removed"] = "Job access rule removed for %s",
+        ["invalid_job_or_grades"] = "Invalid job name or grades format",
+        ["invalid_job_rule_format"] = "Invalid format. Use 'jobname grades' (e.g., police 0,1,2 or police all)",
         
         -- Access notifications 
         ["access_granted"] = "%s has given you access to %s",
@@ -80,6 +132,10 @@ Config.Translations = {
         ["nearby_players"] = "Nearby Players",
         ["add_player_title"] = "Add Player",
         ["select_method"] = "Select method",
+        ["job_access_management"] = "Manage Job Access",
+        ["add_job_rule_title"] = "Add Job Rule",
+        ["edit_job_rule_title"] = "Edit Job Rule for %s",
+        ["confirm_job_rule_removal"] = "Confirm Job Rule Removal",
         
         -- Menu options
         ["open_storage"] = "Open Storage",
@@ -94,6 +150,10 @@ Config.Translations = {
         ["enter_player_name"] = "Enter Player Name",
         ["view_remove_player"] = "View / Remove Player",
         ["no_players_found"] = "No players found",
+        ["manage_job_access_option"] = "Manage Job Access",
+        ["add_new_job_rule"] = "Add New Job Rule",
+        ["remove_job_rule_option"] = "Remove Job Rule: %s",
+        ["yes_remove_job_rule"] = "Yes, remove rule",
         
         -- Descriptions
         ["open_storage_desc"] = "Access the storage contents",
@@ -112,6 +172,12 @@ Config.Translations = {
         ["nearby_player_desc"] = "Character ID: %d\nServer ID: %d",
         ["manual_player_desc"] = "Manually enter player name",
         ["nearby_players_desc"] = "Look for players in your vicinity",
+        ["manage_job_access_desc"] = "Define which jobs and grades can access this storage",
+        ["add_job_rule_desc"] = "Add a new job and grade-based access rule",
+        ["remove_job_rule_desc"] = "Remove access for job: %s",
+        ["job_grades_desc"] = "Enter grades (e.g., 0,1,2) or 'all'",
+        ["remove_job_access_text"] = "Remove access rule for job %s?",
+        ["enter_job_and_grades_desc"] = "Example: police 0,1,2  OR  police all",
         
         -- Inputs
         ["confirm"] = "Confirm",
@@ -121,6 +187,9 @@ Config.Translations = {
         ["confirm_upgrade"] = "Upgrade by %d slots for $%d",
         ["upgrade_confirmation"] = "Confirm Upgrade",
         ["upgrade_confirm_desc"] = "This will increase your storage capacity",
+        ["enter_job_name"] = "Enter Job Name (e.g., police)",
+        ["enter_job_grades"] = "Enter Allowed Grades (e.g., 0,1,2 or all)",
+        ["enter_job_rule"] = "Enter Job & Grades (e.g., police 0,1,2 or police all)",
         
         -- Prompts
         ["create_storage_prompt"] = "Create Storage",
@@ -151,7 +220,12 @@ Config.Translations = {
         ["already_has_access"] = "Este jugador ya tiene acceso",
         ["error_removing"] = "Error al eliminar el acceso del jugador",
         ["removal_success"] = "Eliminando acceso para %s",
-        
+        ["job_access_updated"] = "Reglas de acceso por trabajo actualizadas con éxito",
+        ["job_rule_added"] = "Regla de acceso por trabajo añadida para %s",
+        ["job_rule_removed"] = "Regla de acceso por trabajo eliminada para %s",
+        ["invalid_job_or_grades"] = "Nombre de trabajo o formato de grados inválido",
+        ["invalid_job_rule_format"] = "Formato inválido. Usa 'nombretrabajo grados' (ej: police 0,1,2 o police all)",
+
         -- Access notifications
         ["access_granted"] = "%s te ha dado acceso a %s",
         ["access_revoked"] = "%s ha eliminado tu acceso a %s",
@@ -167,7 +241,11 @@ Config.Translations = {
         ["nearby_players"] = "Jugadores Cercanos",
         ["add_player_title"] = "Añadir Jugador",
         ["select_method"] = "Seleccionar método",
-        
+        ["job_access_management"] = "Gestionar Acceso por Trabajo",
+        ["add_job_rule_title"] = "Añadir Regla de Trabajo",
+        ["edit_job_rule_title"] = "Editar Regla para Trabajo %s",
+        ["confirm_job_rule_removal"] = "Confirmar Eliminación de Regla de Trabajo",
+
         -- Menu options
         ["open_storage"] = "Abrir Almacén",
         ["rename_storage"] = "Renombrar Almacén",
@@ -181,7 +259,11 @@ Config.Translations = {
         ["enter_player_name"] = "Introducir Nombre del Jugador",
         ["view_remove_player"] = "Ver / Eliminar Jugador",
         ["no_players_found"] = "No se encontraron jugadores",
-        
+        ["manage_job_access_option"] = "Gestionar Acceso por Trabajo",
+        ["add_new_job_rule"] = "Añadir Nueva Regla de Trabajo",
+        ["remove_job_rule_option"] = "Eliminar Regla de Trabajo: %s",
+        ["yes_remove_job_rule"] = "Sí, eliminar regla",
+
         -- Descriptions
         ["open_storage_desc"] = "Acceder al contenido del almacén",
         ["rename_storage_desc"] = "Cambiar el nombre de tu almacén",
@@ -199,7 +281,13 @@ Config.Translations = {
         ["nearby_player_desc"] = "ID de Personaje: %d\nID de Servidor: %d",
         ["manual_player_desc"] = "Introduce manualmente el nombre del jugador",
         ["nearby_players_desc"] = "Buscar jugadores en tu vecindad",
-        
+        ["manage_job_access_desc"] = "Define qué trabajos y grados pueden acceder a este almacén",
+        ["add_job_rule_desc"] = "Añadir una nueva regla de acceso basada en trabajo y grado",
+        ["remove_job_rule_desc"] = "Eliminar acceso para el trabajo: %s",
+        ["job_grades_desc"] = "Introduce grados (ej: 0,1,2) o 'all'",
+        ["remove_job_access_text"] = "¿Eliminar regla de acceso para el trabajo %s?",
+        ["enter_job_and_grades_desc"] = "Ejemplo: police 0,1,2  O  police all",
+
         -- Inputs
         ["confirm"] = "Confirmar",
         ["enter_new_name"] = "Introducir nuevo nombre",
@@ -208,7 +296,10 @@ Config.Translations = {
         ["confirm_upgrade"] = "Mejorar en %d espacios por $%d",
         ["upgrade_confirmation"] = "Confirmar Mejora",
         ["upgrade_confirm_desc"] = "Esto aumentará la capacidad de tu almacenamiento",
-        
+        ["enter_job_name"] = "Introducir Nombre del Trabajo (ej: police)",
+        ["enter_job_grades"] = "Introducir Grados Permitidos (ej: 0,1,2 o all)",
+        ["enter_job_rule"] = "Introducir Trabajo y Grados (ej: police 0,1,2 o police all)",
+
         -- Prompts
         ["create_storage_prompt"] = "Crear Almacén",
         ["open_storage_prompt"] = "Abrir Almacén",

@@ -76,41 +76,56 @@ function MainLoop()
             local playerPed = PlayerPedId()
             local coords = GetEntityCoords(playerPed)
             local wait = 1000
-            local showPrompt = false
+            nearestStorage = nil -- Reset nearest storage each loop iteration
             
-            -- Check if player is near any storage
-            for _, storage in pairs(playerStorages) do
-                if storage and storage.pos_x then
-                    local storageCoords = vector3(storage.pos_x, storage.pos_y, storage.pos_z)
-                    local dist = #(coords - storageCoords)
-                    
-                    if dist <= Config.AccessRadius then
-                        -- Found a storage within range
-                        nearestStorage = storage
-                        showPrompt = true
-                        wait = 0
-                        
-                        -- Show the prompt with storage name
-                        local storageName = (storage.storage_name or ("Storage #" .. storage.id)) .. " | ID:" .. storage.id
-                        local label = CreateVarString(10, 'LITERAL_STRING', storageName)
-                        PromptSetActiveGroupThisFrame(PromptGroup, label)
-                        
-                        if PromptHasStandardModeCompleted(StoragePrompt) then
-                            -- Check if player is owner to show menu or directly open storage
-                            TriggerServerEvent('character_storage:checkOwnership', nearestStorage.id)
-                            Wait(1000) -- Prevent spamming
+            -- Check if player is near any storage location
+            for _, storage_item in pairs(playerStorages) do
+                if storage_item and (storage_item.locations or storage_item.pos_x) then
+                    local storageLocations = {}
+                    if storage_item.locations and #storage_item.locations > 0 then 
+                        storageLocations = storage_item.locations
+                    elseif storage_item.pos_x then 
+                        storageLocations = { vector3(storage_item.pos_x, storage_item.pos_y, storage_item.pos_z) }
+                    end
+
+                    for loc_idx, locCoords in ipairs(storageLocations) do
+                        if locCoords then
+                            local dist = #(coords - locCoords)
+                            
+                            if dist <= Config.AccessRadius then
+                                nearestStorage = storage_item -- Store the whole storage object
+                                wait = 0
+                                
+                                local baseName
+                                local displayIdSuffix
+
+                                if nearestStorage.isPreset then
+                                    baseName = nearestStorage.name or "Preset"
+                                    if nearestStorage.linked then
+                                        displayIdSuffix = " #" .. loc_idx
+                                    else
+                                        displayIdSuffix = " #" .. (nearestStorage.location_index or loc_idx)
+                                    end
+                                else
+                                    baseName = nearestStorage.storage_name or "Storage"
+                                    displayIdSuffix = " #" .. nearestStorage.id
+                                end
+                                local displayName = baseName .. displayIdSuffix
+
+                                local label = CreateVarString(10, 'LITERAL_STRING', displayName)
+                                PromptSetActiveGroupThisFrame(PromptGroup, label)
+                                
+                                if PromptHasStandardModeCompleted(StoragePrompt) then
+                                    TriggerServerEvent('character_storage:checkOwnership', nearestStorage.id)
+                                    Wait(1000) 
+                                end
+                                goto next_loop_iteration -- Found a storage, process and break from inner loops
+                            end
                         end
-                        
-                        -- Only show for the closest storage
-                        break
                     end
                 end
             end
-            
-            -- If we're not showing a prompt, clear the nearest storage
-            if not showPrompt then
-                nearestStorage = nil
-            end
+            ::next_loop_iteration::
             
             Citizen.Wait(wait)
         end
@@ -127,23 +142,106 @@ function CreateStorageBlips()
         end
     end
     storageBlips = {}
+
+    if Config.Debug then
+        DebugMsg("--- Dumping playerStorages before creating blips ---")
+        if playerStorages and #playerStorages > 0 then
+            for i, item in ipairs(playerStorages) do
+                local item_id = item.id or "NO_ID"
+                local item_name = item.name or item.storage_name or "NO_NAME"
+                local item_isPreset = tostring(item.isPreset)
+                local item_blipSprite = tostring(item.blipSprite)
+                local item_locations_json = "NIL_LOCATIONS"
+                if item.locations then
+                    item_locations_json = json.encode(item.locations)
+                else
+                    item_locations_json = "MISSING_OR_EMPTY_LOCATIONS_ARRAY"
+                end
+                DebugMsg(string.format("Item %d: ID=%s, Name=%s, isPreset=%s, blipSprite=%s, locations=%s, linked=%s, location_index=%s",
+                    i, tostring(item_id), tostring(item_name), item_isPreset, item_blipSprite, item_locations_json, tostring(item.linked), tostring(item.location_index)))
+            end
+        else
+            DebugMsg("playerStorages is empty or nil.")
+        end
+        DebugMsg("--- End of playerStorages dump ---")
+    end
     
     -- Create new blips
     if Config.UseBlips then
-        for _, storage in pairs(playerStorages) do
-            if storage and storage.pos_x then
-                local blip = Citizen.InvokeNative(0x554D9D53F696D002, 1664425300, storage.pos_x, storage.pos_y, storage.pos_z)
-                if blip and DoesBlipExist(blip) then
-                    SetBlipSprite(blip, Config.BlipSprite, 1)
-                    SetBlipScale(blip, 0.2)
-                    local storageName = storage.storage_name or GetTranslation("storage_title", storage.id)
-                    Citizen.InvokeNative(0x9CB1A1623062F402, blip, storageName)
-                    table.insert(storageBlips, blip)
-                    DebugMsg("Created blip for storage #" .. storage.id)
+        for _, storage_item in pairs(playerStorages) do
+            if storage_item then
+                if Config.Debug then
+                    local debug_id = storage_item.id or "UNKNOWN_ID"
+                    local debug_name = storage_item.name or storage_item.storage_name or "UNKNOWN_NAME"
+                    local debug_isPreset = tostring(storage_item.isPreset)
+                    local debug_blipSprite = tostring(storage_item.blipSprite)
+                    local debug_locations_count = (storage_item.locations and #storage_item.locations) or 0
+                    local debug_locations_data = "N/A"
+                    if storage_item.locations then debug_locations_data = json.encode(storage_item.locations) end
+
+                    DebugMsg(string.format("Processing for Blip: ID=%s, Name=%s, isPreset=%s, BlipSprite=%s, LocationsCount=%d, LocationsData=%s",
+                        debug_id, debug_name, debug_isPreset, debug_blipSprite, debug_locations_count, debug_locations_data))
+                end
+
+                local blipSpriteToUse = Config.BlipSprite 
+                local blipScaleToUse = 0.2 
+
+                if storage_item.isPreset and storage_item.blipSprite ~= nil then -- Ensure blipSprite is not nil
+                    blipSpriteToUse = storage_item.blipSprite 
+                    DebugMsg("Using PRESET blip sprite: " .. tostring(blipSpriteToUse) .. " for storage ID: " .. (storage_item.id or "UNKNOWN"))
+                elseif not storage_item.isPreset then
+                    DebugMsg("Using DEFAULT DB blip sprite: " .. tostring(blipSpriteToUse) .. " for storage ID: " .. (storage_item.id or "UNKNOWN"))
+                else
+                    DebugMsg("Warning: Preset storage ID " .. (storage_item.id or "UNKNOWN") .. " has nil blipSprite. Falling back to default: " .. Config.BlipSprite)
+                end
+
+                local storageLocationsToBlip = {}
+                -- Rely on the .locations array, which server should now provide for all types.
+                if storage_item.locations and #storage_item.locations > 0 then
+                    storageLocationsToBlip = storage_item.locations
+                else
+                    DebugMsg("Skipping blip creation for storage ID: " .. (storage_item.id or "UNKNOWN") .. " - .locations array is missing or empty.")
+                    goto continue_outer_loop -- Skip to next storage_item if no locations
+                end
+
+                for loc_idx, locCoords in ipairs(storageLocationsToBlip) do
+                    if locCoords and locCoords.x and locCoords.y and locCoords.z then
+                        DebugMsg("Attempting to create blip for " .. (storage_item.id or "UNKNOWN") .. " at loc_idx " .. loc_idx .. ": " .. json.encode(locCoords) .. " with sprite " .. blipSpriteToUse)
+                        local blip = Citizen.InvokeNative(0x554D9D53F696D002, 1664425300, locCoords.x, locCoords.y, locCoords.z)
+                        if blip and DoesBlipExist(blip) then
+                            SetBlipSprite(blip, blipSpriteToUse, 1)
+                            SetBlipScale(blip, blipScaleToUse) 
+                            
+                            local baseName
+                            local displayIdSuffix
+
+                            if storage_item.isPreset then
+                                baseName = storage_item.name or "Preset"
+                                if storage_item.linked then
+                                    displayIdSuffix = " #" .. loc_idx
+                                else
+                                    displayIdSuffix = " #" .. (storage_item.location_index or loc_idx)
+                                end
+                            else
+                                baseName = storage_item.storage_name or GetTranslation("storage_title", storage_item.id)
+                                displayIdSuffix = " #" .. storage_item.id
+                            end
+                            local displayName = baseName .. displayIdSuffix
+
+                            Citizen.InvokeNative(0x9CB1A1623062F402, blip, displayName)
+                            table.insert(storageBlips, blip)
+                            DebugMsg("SUCCESS: Created blip for storage ID: " .. (storage_item.id or "UNKNOWN") .. " at " .. string.format("%.2f", locCoords.x) .. "," .. string.format("%.2f", locCoords.y) .. "," .. string.format("%.2f", locCoords.z) .. " using sprite: " .. blipSpriteToUse)
+                        else
+                             DebugMsg("FAILED to create blip object for " .. (storage_item.id or "UNKNOWN") .. " at loc_idx " .. loc_idx)
+                        end
+                    else
+                        DebugMsg("Invalid locCoords for storage ID: " .. (storage_item.id or "UNKNOWN") .. " at loc_idx: " .. loc_idx .. " Data: " .. json.encode(locCoords))
+                    end
                 end
             end
+            ::continue_outer_loop::
         end
-        DebugMsg("Created " .. #storageBlips .. " storage blips")
+        DebugMsg("Created " .. #storageBlips .. " storage blips in total")
     end
 end
 
@@ -167,16 +265,48 @@ RegisterNetEvent('character_storage:receiveStorages')
 AddEventHandler('character_storage:receiveStorages', function(storages)
     if not storages then
         DebugMsg("Received nil storages data")
+        playerStorages = {}
+        exports["character_storage"]:UpdateStorages(playerStorages)
+        CreateStorageBlips()
         return
     end
     
     DebugMsg("Received " .. #storages .. " storage locations from server")
-    playerStorages = storages or {}
-    -- Update the storages in menu.lua
+    playerStorages = storages or {} 
+    
+    -- Server should send complete data. This loop is a minimal integrity check.
+    if Config.Debug then DebugMsg("--- Verifying received storages ---") end
+    for i, storage_item in ipairs(playerStorages) do
+        if storage_item.authorized_jobs == nil then
+            playerStorages[i].authorized_jobs = '{}'
+        end
+
+        if Config.Debug then
+            local item_id = storage_item.id or "NO_ID"
+            local item_name = storage_item.name or storage_item.storage_name or "NO_NAME"
+            local item_isPreset = tostring(storage_item.isPreset)
+            local item_blipSprite = tostring(storage_item.blipSprite)
+            local item_locations_json = "NIL_LOCATIONS"
+            if storage_item.locations then
+                item_locations_json = json.encode(storage_item.locations)
+            end
+            DebugMsg(string.format("Received Item %d: ID=%s, Name=%s, isPreset=%s, blipSprite=%s, locations=%s, linked=%s, location_index=%s",
+                i, tostring(item_id), tostring(item_name), item_isPreset, item_blipSprite, item_locations_json, tostring(storage_item.linked), tostring(storage_item.location_index)))
+        end
+
+        -- Ensure essential fields for presets are present, log if not.
+        if storage_item.isPreset then
+            if not storage_item.name then DebugMsg("Warning: Preset storage ID " .. (storage_item.id or "UNKNOWN") .. " missing .name from server.") end
+            if not storage_item.locations or #storage_item.locations == 0 then DebugMsg("Warning: Preset storage ID " .. (storage_item.id or "UNKNOWN") .. " missing or empty .locations from server.") end
+            if storage_item.blipSprite == nil then DebugMsg("Warning: Preset storage ID " .. (storage_item.id or "UNKNOWN") .. " missing .blipSprite from server.") end
+            if storage_item.linked == nil then DebugMsg("Warning: Preset storage ID " .. (storage_item.id or "UNKNOWN") .. " missing .linked boolean from server.") end
+        end
+    end
+    if Config.Debug then DebugMsg("--- End of received storages verification ---") end
+    
     exports["character_storage"]:UpdateStorages(playerStorages)
     CreateStorageBlips()
     
-    -- Debug message to track updates
     if Config.Debug then
         print("[DEBUG] Storage data refreshed: " .. #playerStorages .. " storages available")
     end
@@ -198,6 +328,24 @@ end)
 
 RegisterNetEvent('character_storage:updateStorageLocations')
 AddEventHandler('character_storage:updateStorageLocations', function(storage)
+    if storage.authorized_jobs == nil then
+        storage.authorized_jobs = '{}'
+    end
+    if storage.isPreset == nil and Config.DefaultStorages then
+         for _, presetConfig in ipairs(Config.DefaultStorages) do
+            if presetConfig.id == storage.id or (presetConfig.id_prefix and string.sub(storage.id, 1, #presetConfig.id_prefix) == presetConfig.id_prefix) then
+                storage.isPreset = true
+                storage.name = storage.name or presetConfig.name
+                storage.locations = storage.locations or presetConfig.locations
+                storage.blipSprite = storage.blipSprite or presetConfig.blipSprite
+                storage.linked = storage.linked
+                if presetConfig.linked == false and not storage.locations then
+                     storage.locations = {vector3(storage.pos_x, storage.pos_y, storage.pos_z)}
+                end
+                break
+            end
+        end
+    end
     table.insert(playerStorages, storage)
     exports["character_storage"]:UpdateStorages(playerStorages)
     CreateStorageBlips()
@@ -205,13 +353,11 @@ end)
 
 RegisterNetEvent('character_storage:removeStorage')
 AddEventHandler('character_storage:removeStorage', function(id)
-    -- Check if the storage being removed is the one we're currently near
     if nearestStorage and nearestStorage.id == id then
         DebugMsg("Clearing nearest storage reference as it was deleted")
         nearestStorage = nil
     end
 
-    -- Remove the storage from our local table
     for i, storage in ipairs(playerStorages) do
         if storage.id == id then
             table.remove(playerStorages, i)
@@ -220,18 +366,15 @@ AddEventHandler('character_storage:removeStorage', function(id)
         end
     end
 
-    -- Update the menu with new storage data
     exports["character_storage"]:UpdateStorages(playerStorages)
     
-    -- Explicitly remove the blip for this specific storage before recreating all
     for i, blip in pairs(storageBlips) do
         if blip and DoesBlipExist(blip) then
             RemoveBlip(blip)
         end
     end
-    storageBlips = {} -- Clear the blips table
+    storageBlips = {}
     
-    -- Recreate all blips with the updated storage list
     CreateStorageBlips()
     DebugMsg("Recreated storage blips after deletion of storage #" .. id)
 end)
