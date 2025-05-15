@@ -1,5 +1,7 @@
 # REDM Character Storage
 
+![Character Storage Script In Action](https://forum-cfx-re.akamaized.net/original/5X/2/3/3/7/23379c898b6d3e54a2b7887ac00a7e13732ac80c.jpeg)
+
 A comprehensive storage system for RedM servers using VORP Framework. Allow your players to create personal storage containers that can be accessed by themselves and trusted friends.
 
 ## Features
