@@ -28,8 +28,7 @@ server_scripts {
 dependencies {
     'vorp_core',
     'vorp_inventory',
-    'vorp_menu',
-    'syn_inputs'
+    'vorp_menu'
 }
 
 -- Ensure proper loading order

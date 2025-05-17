@@ -234,13 +234,60 @@ AddEventHandler('onResourceStart', function(resourceName)
     if resourceName ~= GetCurrentResourceName() then return end
     
     LoadAllStorages()
+    
+    -- Add a small delay to ensure everything is loaded properly
+    Citizen.SetTimeout(1000, function()
+        SendStoragesToAllPlayers()
+    end)
 end)
 
--- Add a server export to allow other resources to request initialization
-exports('LoadAllStoragesFromDatabase', function()
-    LoadAllStorages()
-    return initialized
+-- Handle resource stop to clean up and prepare for potential restart
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+    
+    print("Character storage system stopping. Cleaning up resources...")
+    
+    -- Any additional cleanup can go here
+    
+    initialized = false
 end)
+
+-- Function to send storage data to all currently connected players
+function SendStoragesToAllPlayers()
+    if not initialized then
+        print("Storage system not yet initialized. Cannot send data to players.")
+        return
+    end
+    
+    local players = GetPlayers()
+    local playerCount = #players
+    
+    print("Broadcasting storage data to " .. playerCount .. " connected players")
+    
+    local sentCount = 0
+    
+    for _, playerId in ipairs(players) do
+        local source = tonumber(playerId)
+        if source then
+            -- Check if player has a character selected
+            local User = VORPcore.getUser(source)
+            if User then
+                local Character = User.getUsedCharacter
+                if Character then
+                    SendAllStoragesToPlayer(source)
+                    sentCount = sentCount + 1
+                    DebugLog("Sent storage data to player " .. source .. " (Character ID: " .. Character.charIdentifier .. ")")
+                else
+                    DebugLog("Player " .. source .. " doesn't have a character selected yet")
+                end
+            else
+                DebugLog("Couldn't get User object for player " .. source)
+            end
+        end
+    end
+    
+    print("Successfully sent storage data to " .. sentCount .. " out of " .. playerCount .. " players")
+end
 
 -- Register all storage inventories as a server export
 exports('RegisterAllStorageInventories', function()
@@ -1206,4 +1253,16 @@ AddEventHandler("character_storage:checkAdminPermission", function(action)
         VORPcore.NotifyRightTip(_source, GetTranslation("no_permission"), 4000)
         DebugLog("Non-admin " .. _source .. " attempted to use admin storage command")
     end
+end)
+
+-- Add an event that other resources can trigger to refresh storage data for players
+RegisterNetEvent("character_storage:refreshAllPlayerStorages")
+AddEventHandler("character_storage:refreshAllPlayerStorages", function()
+    SendStoragesToAllPlayers()
+end)
+
+-- Export function to allow other resources to request a storage data refresh
+exports('RefreshAllPlayerStorages', function()
+    SendStoragesToAllPlayers()
+    return true
 end)

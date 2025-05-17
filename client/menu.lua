@@ -477,8 +477,23 @@ function OpenRenameMenu(storageId)
         end
     end
     
-    -- Use syn_inputs instead of vorp_inputs
-    TriggerEvent("syn_inputs:sendinputs", GetTranslation("confirm"), GetTranslation("enter_new_name"), function(result)
+    -- Replace syn_inputs with vorp_inputs
+    local myInput = {
+        type = "enableinput", -- don't touch
+        inputType = "input",
+        button = GetTranslation("confirm"), -- button name
+        placeholder = GetTranslation("enter_new_name"), -- placeholder name
+        style = "block", -- don't touch
+        attributes = {
+            inputHeader = GetTranslation("enter_new_name"), -- header
+            type = "text", -- inputype text, number,date,textarea ETC
+            pattern = "[A-Za-z0-9 ]{2,30}", -- regular expression validated for only numbers "[0-9]", for letters only [A-Za-z]+   with charecter limit  [A-Za-z]{5,20}
+            title = "Must be between 2-30 characters. No special characters allowed.", -- if input doesn't match show this message
+            style = "border-radius: 10px; background-color: ; border:none;" -- style  the input
+        }
+    }
+
+    TriggerEvent("vorpinputs:advancedInput", json.encode(myInput), function(result)
         local newName = tostring(result)
         if newName ~= nil and newName ~= "" then
             TriggerServerEvent('character_storage:renameStorage', storageId, newName)
@@ -677,7 +692,23 @@ function OpenAddOrEditJobRuleMenu(storageId, existingJobName)
     local title = existingJobName and GetTranslation("edit_job_rule_title", existingJobName) or GetTranslation("add_job_rule_title")
     local subtext = GetTranslation("enter_job_and_grades_desc")
 
-    TriggerEvent("syn_inputs:sendinputs", GetTranslation("confirm"), GetTranslation("enter_job_rule"), function(inputResult)
+    local myInput = {
+        type = "enableinput", -- don't touch
+        inputType = "input",
+        button = GetTranslation("confirm"), -- button name
+        placeholder = GetTranslation("enter_job_rule"), -- placeholder name
+        style = "block", -- don't touch
+        attributes = {
+            inputHeader = title, -- header
+            type = "text", -- inputype text, number,date,textarea ETC
+            pattern = "[A-Za-z0-9 ,]{2,50}", -- regular expression validated for job names and grades
+            title = subtext, -- if input doesn't match show this message
+            style = "border-radius: 10px; background-color: ; border:none;", -- style  the input
+            value = currentInputStr -- default value
+        }
+    }
+
+    TriggerEvent("vorpinputs:advancedInput", json.encode(myInput), function(inputResult)
         local fullInput = inputResult and tostring(inputResult) or ""
         fullInput = fullInput:match("^%s*(.-)%s*$") -- Trim whitespace
 
@@ -754,7 +785,7 @@ function OpenAddOrEditJobRuleMenu(storageId, existingJobName)
             VORPcore.NotifyRightTip(GetTranslation("invalid_job_rule_format"), 4000)
             OpenJobAccessManagementMenu(storageId)
         end
-    end, currentInputStr, subtext) -- Pass current rule as default input and new subtext
+    end)
 end
 
 function ConfirmRemoveJobRule(storageId, jobName)

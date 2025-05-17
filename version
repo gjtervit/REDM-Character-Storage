@@ -5,6 +5,8 @@
 - Added option to only show blips for storages the player has access to
 - Added admin command to show/hide all storage blips regardless of access
 - Improved permission checking for storage blip visibility
+- Added support for script reloading - now properly updates storage data for all online players when the script is restarted
+- Removed dependency on syn_inputs. Now uses VORP native inputs
 
 <1.0.4>
 - Added option to create preconfigured storages including linked storages (useful for shared police or doctor storages for example)
