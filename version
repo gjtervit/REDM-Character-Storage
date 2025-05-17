@@ -1,3 +1,11 @@
+<1.0.5>
+- Made the isPreset flag automatic - no longer needs to be specified in config
+- Improved reliability of storage permission system
+- Fixed an issue with "Search Nearby Players" not finding players. Changed language to "Search players", and now finds all players currently online instead.
+- Added option to only show blips for storages the player has access to
+- Added admin command to show/hide all storage blips regardless of access
+- Improved permission checking for storage blip visibility
+
 <1.0.4>
 - Added option to create preconfigured storages including linked storages (useful for shared police or doctor storages for example)
 - Added option for players to give specified job access to their storages

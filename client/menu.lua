@@ -434,7 +434,7 @@ function OpenAddPlayerMenu(storageId)
         {
             label = GetTranslation("search_nearby"),
             value = "nearby",
-            desc = GetTranslation("nearby_players_desc")
+            desc = GetTranslation("all_players_desc")
         },
         {
             label = GetTranslation("back_menu"),
@@ -817,32 +817,115 @@ AddEventHandler('character_storage:receiveStorages', function(storages)
     -- Any active menus may need to be refreshed here
 end)
 
--- Add the missing event handler for nearby players
+-- Add the missing function to display players
+function DisplayNearbyPlayersMenu()
+    MenuData.CloseAll()
+    
+    local elements = {}
+    
+    -- Sort players by name
+    table.sort(nearbyPlayers, function(a, b)
+        return a.name < b.name
+    end)
+    
+    -- Add all players to the menu
+    for _, player in ipairs(nearbyPlayers) do
+        table.insert(elements, {
+            label = player.name,
+            value = "add_" .. player.charId,
+            desc = GetTranslation("nearby_player_desc", player.charId, player.serverId)
+        })
+    end
+    
+    -- Add back option
+    table.insert(elements, {
+        label = GetTranslation("back_menu"),
+        value = "back",
+        desc = ""
+    })
+    
+    MenuData.Open("default", GetCurrentResourceName(), "select_player_menu", {
+        title = GetTranslation("add_player_title"),
+        subtext = GetTranslation("select_player"),
+        align = "top-right",
+        elements = elements
+    }, function(data, menu)
+        if data.current.value == "back" then
+            menu.close()
+            OpenAddPlayerMenu(currentStorageId)
+        elseif string.sub(data.current.value, 1, 4) == "add_" then
+            local charId = string.sub(data.current.value, 5)
+            
+            -- Find player's name
+            local playerName = "Unknown"
+            for _, player in ipairs(nearbyPlayers) do
+                if tostring(player.charId) == charId then
+                    playerName = player.name
+                    break
+                end
+            end
+            
+            -- Add player to storage access
+            TriggerServerEvent('character_storage:addUserById', currentStorageId, tonumber(charId))
+            menu.close()
+        end
+    end, function(data, menu)
+        menu.close()
+        OpenAddPlayerMenu(currentStorageId)
+    end)
+end
+
+-- Update OpenAddPlayerMenu function to change "nearby" players to "all" players
+function OpenAddPlayerMenu(storageId)
+    if not storageId then return end -- Safety check
+    
+    currentStorageId = storageId -- Store for callbacks
+    
+    -- Using VORP menu pattern for an initial selection
+    local elements = {
+        {
+            label = GetTranslation("search_nearby"),
+            value = "nearby",
+            desc = GetTranslation("all_players_desc")
+        },
+        {
+            label = GetTranslation("back_menu"),
+            value = "back",
+            desc = GetTranslation("manage_players_desc")
+        }
+    }
+    
+    MenuData.Open("default", GetCurrentResourceName(), "add_player_menu",
+    {
+        title = GetTranslation("add_player_title", storageId),
+        subtext = GetTranslation("select_method"),
+        align = "top-right",
+        elements = elements
+    }, function(data, menu)
+        if data.current.value == "nearby" then
+            menu.close()
+            -- Request online players from server
+            TriggerServerEvent('character_storage:getOnlinePlayers')
+        elseif data.current.value == "back" then
+            menu.close()
+            OpenAccessManagementMenu(storageId)
+        end
+    end, function(data, menu)
+        menu.close()
+        OpenAccessManagementMenu(storageId)
+    end)
+end
+
+-- Add event handler for receiving online players
 RegisterNetEvent('character_storage:receiveOnlinePlayers')
 AddEventHandler('character_storage:receiveOnlinePlayers', function(playersList)
     DebugMsg("Received " .. #playersList .. " online players from server")
     
-    -- Get player's current position
-    local playerPed = PlayerPedId()
-    local playerCoords = GetEntityCoords(playerPed)
-    nearbyPlayers = {}
-    
-    -- Process and filter nearby players
-    local maxDistance = 4000.0  -- Maximum distance to show players (can move to config)
-    
-    for _, player in ipairs(playersList) do
-        local playerPos = vector3(player.coords.x, player.coords.y, player.coords.z)
-        local distance = #(playerCoords - playerPos)
-        
-        if distance <= maxDistance then
-            -- Add distance to player data for sorting
-            player.distance = distance
-            table.insert(nearbyPlayers, player)
-        end
-    end
+    -- Store all players received, not just nearby ones
+    nearbyPlayers = playersList
     
     if #nearbyPlayers > 0 then
-        DebugMsg("Found " .. #nearbyPlayers .. " players nearby")
+        DebugMsg("Found " .. #nearbyPlayers .. " players")
         DisplayNearbyPlayersMenu()
     else
         VORPcore.NotifyRightTip(GetTranslation("no_players_found"), 3000)

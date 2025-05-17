@@ -27,14 +27,16 @@ Config.AccessRadius = 2.0
 -- Blip settings
 Config.UseBlips = true
 Config.BlipSprite = -1138864184 -- Default blip sprite hash (BLIP_CHEST). Find more at https://redlookup.com/blips
+Config.OnlyShowAccessibleBlips = true -- Only show blips for storages the player has access to
 
 -- Prompt settings
 Config.PromptKey = 0x760A9C6F -- G key
 
 -- Commands for handling storages
-Config.menustorage = 'createstorage'
-Config.adminmovestorage = 'movestorage'
-Config.admindeletestorage = 'deletestorage'
+Config.menustorage = 'createstorage'        -- Command for players to create a storage
+Config.adminmovestorage = 'movestorage'     -- Command for admins to move storages
+Config.admindeletestorage = 'deletestorage' -- Command for admins to delete storages
+Config.adminStorageCommand = 'storageadmin' -- Command for admins to show/hide all storage blips
 
 -- Language system
 Config.DefaultLanguage = "english" -- Default language: "english" or "spanish"
@@ -57,7 +59,7 @@ Config.DefaultStorages = {
             vector3(2507.56, -1301.95, 49.0),    -- St. Denis Police Station
             vector3(1361.99, -1302.32, 77.85),  -- Rhodes Police Station
             vector3(-1812.37, -355.89, 164.7),  -- Strawberry Police Station
-            vector3(-278.52, 805.04, 119.43)   -- Valentine Police Station
+            vector3(-278.69, 806.22, 119.38)   -- Valentine Police Station
         },
         linked = true, -- True: all locations share one inventory. False: each location is a separate instance.
         capacity = 5000,
@@ -71,7 +73,29 @@ Config.DefaultStorages = {
         },
         authorized_charids = {}, -- Optional: list of specific charIDs that can access
         -- owner_charid = nil, -- Not typically needed for job/shared storages
-        isPreset = true -- Internal flag
+    },
+    {
+        id = "doctor_main", -- Unique ID for this preset storage configuration
+        name = "Doctor Storage",
+        locations = {
+            vector3(-764.84, -1272.38, 44.09),   -- Blackwater Doctor Station
+            vector3(2722.93, -1233.52, 50.37),    -- St. Denis Doctor Station
+            vector3(1368.54, -1307.05, 77.97),  -- Rhodes Doctor Station
+            vector3(-1806.8, -428.47, 158.83),  -- Strawberry Doctor Station
+            vector3(-288.86, 803.66, 119.39)   -- Valentine Doctor Station
+        },
+        linked = true, -- True: all locations share one inventory. False: each location is a separate instance.
+        capacity = 5000,
+        blipSprite = -1546805641, -- Example: Hash for blip_ambient_sheriff. Replace with actual hash or string name.
+        authorized_jobs = {
+            ["LemoyneDoc"] = { all_grades = true },
+            ["NewHanoverDoc"] = { all_grades = true },
+            ["WestElizabethDoc"] = { all_grades = true },
+            ["NewAustinDoc"] = { all_grades = true },
+            ["GeneralDoc"] = { all_grades = true }
+        },
+        authorized_charids = {}, -- Optional: list of specific charIDs that can access
+        -- owner_charid = nil, -- Not typically needed for job/shared storages
     },
     -- Example of non-linked preset storages (each location is a separate storage instance)
     -- {
@@ -146,7 +170,7 @@ Config.Translations = {
         ["close_menu"] = "Close",
         ["yes_remove"] = "Yes, remove access",
         ["no_cancel"] = "No, cancel",
-        ["search_nearby"] = "Search Nearby Players",
+        ["search_nearby"] = "Search Players",
         ["enter_player_name"] = "Enter Player Name",
         ["view_remove_player"] = "View / Remove Player",
         ["no_players_found"] = "No players found",
@@ -169,7 +193,7 @@ Config.Translations = {
         ["player_info_loading"] = "Loading player %d...",
         ["player_info_wait"] = "Please wait while player info loads",
         ["add_remove_desc"] = "Click to remove this player's access to your storage",
-        ["nearby_player_desc"] = "Character ID: %d\nServer ID: %d",
+        ["all_players_desc"] = "Search all players",
         ["manual_player_desc"] = "Manually enter player name",
         ["nearby_players_desc"] = "Look for players in your vicinity",
         ["manage_job_access_desc"] = "Define which jobs and grades can access this storage",
@@ -178,7 +202,6 @@ Config.Translations = {
         ["job_grades_desc"] = "Enter grades (e.g., 0,1,2) or 'all'",
         ["remove_job_access_text"] = "Remove access rule for job %s?",
         ["enter_job_and_grades_desc"] = "Example: police 0,1,2  OR  police all",
-        
         -- Inputs
         ["confirm"] = "Confirm",
         ["enter_new_name"] = "Enter new name",
@@ -199,7 +222,13 @@ Config.Translations = {
         ["usage_movestorage"] = "Usage: ".. Config.adminmovestorage .." id x y z",
         ["usage_deletestorage"] = "Usage: ".. Config.admindeletestorage .." id",
         ["storage_deleted"] = "Storage #%d deleted",
-        ["invalid_location"] = "You cannot create a storage here"
+        ["invalid_location"] = "You cannot create a storage here",
+        
+        -- Admin commands
+        ["admin_mode_enabled"] = "ADMIN MODE: Showing ALL storage blips",
+        ["admin_mode_disabled"] = "ADMIN MODE: Showing only accessible storage blips",
+        ["admin_command_usage"] = "Usage: /%s [show/hide]",
+        ["admin_invalid_option"] = "Invalid option. Use 'show' or 'hide'",
     },
     
     ["spanish"] = {
@@ -299,7 +328,7 @@ Config.Translations = {
         ["enter_job_name"] = "Introducir Nombre del Trabajo (ej: police)",
         ["enter_job_grades"] = "Introducir Grados Permitidos (ej: 0,1,2 o all)",
         ["enter_job_rule"] = "Introducir Trabajo y Grados (ej: police 0,1,2 o police all)",
-
+        
         -- Prompts
         ["create_storage_prompt"] = "Crear Almacén",
         ["open_storage_prompt"] = "Abrir Almacén",
@@ -308,6 +337,12 @@ Config.Translations = {
         ["usage_movestorage"] = "Uso: ".. Config.adminmovestorage .." id x y z",
         ["usage_deletestorage"] = "Uso: ".. Config.admindeletestorage .." id",
         ["storage_deleted"] = "Almacén #%d eliminado",
-        ["invalid_location"] = "No puedes crear un almacén aquí"
+        ["invalid_location"] = "No puedes crear un almacén aquí",
+        
+        -- Admin commands
+        ["admin_mode_enabled"] = "MODO ADMIN: Mostrando TODOS los blips de almacén",
+        ["admin_mode_disabled"] = "MODO ADMIN: Mostrando solo blips de almacén accesibles",
+        ["admin_command_usage"] = "Uso: /%s [show/hide]",
+        ["admin_invalid_option"] = "Opción inválida. Utiliza 'show' o 'hide'"
     }
 }

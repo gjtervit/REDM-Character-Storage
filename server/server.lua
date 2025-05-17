@@ -51,6 +51,24 @@ function SendAllStoragesToPlayer(source)
     
     DebugLog("Sending all storages to player: " .. tostring(source))
     local storagesToSend = {}
+    
+    -- Get player character info for permission checking
+    local User = VORPcore.getUser(source)
+    if not User then
+        DebugLog("User not found for source: " .. tostring(source))
+        return
+    end
+    
+    local Character = User.getUsedCharacter
+    if not Character then
+        DebugLog("Character not found for source: " .. tostring(source))
+        return
+    end
+    
+    local charId = Character.charIdentifier
+    local playerJob = Character.job
+    local playerJobGrade = Character.jobGrade
+    
     for id, storageData_cached_entry in pairs(storageCache) do
         local s = shallowcopy(storageData_cached_entry) 
 
@@ -58,6 +76,9 @@ function SendAllStoragesToPlayer(source)
         -- Remove server-side only config fields if they were copied and not needed by client for basic display
         s.authorized_jobs_config = nil
         s.authorized_charids_config = nil
+
+        -- Add access flag based on player's permission
+        s.hasAccess = HasStorageAccess(charId, id, playerJob, playerJobGrade)
 
         -- Ensure .locations is correctly populated for client for ALL types
         if storageData_cached_entry.isPreset then
@@ -148,13 +169,14 @@ function LoadAllStorages()
         -- Process Preset Storages from Config.DefaultStorages
         if Config.DefaultStorages and #Config.DefaultStorages > 0 then
             for _, preset in ipairs(Config.DefaultStorages) do
+                -- Always set isPreset to true for any storage defined in Config.DefaultStorages
                 if preset.linked then
                     -- Linked storage: one inventory for all locations
                     local cacheEntry = shallowcopy(preset)
                     cacheEntry.storage_name = preset.name -- Use 'name' from config as 'storage_name'
                     cacheEntry.authorized_users = '[]' 
                     cacheEntry.owner_charid = preset.owner_charid or 0 
-                    cacheEntry.isPreset = true
+                    cacheEntry.isPreset = true -- Automatically set to true regardless of config
                     cacheEntry.linked = true -- Mark as linked
                     cacheEntry.authorized_jobs_config = preset.authorized_jobs 
                     cacheEntry.authorized_jobs = json.encode(preset.authorized_jobs or {}) 
@@ -180,7 +202,7 @@ function LoadAllStorages()
                             cacheEntry.locations = {locData.coords} 
                             cacheEntry.authorized_users = '[]'
                             cacheEntry.owner_charid = preset.owner_charid or 0
-                            cacheEntry.isPreset = true
+                            cacheEntry.isPreset = true -- Automatically set to true regardless of config
                             cacheEntry.linked = false -- Mark as non-linked
                             cacheEntry.location_index = i -- Store the index of this location
                             cacheEntry.authorized_jobs_config = preset.authorized_jobs
@@ -1161,3 +1183,27 @@ function GetTranslation(key, ...)
     
     return result
 end
+
+-- Admin command to check permissions for showing/hiding all storage blips
+RegisterServerEvent("character_storage:checkAdminPermission")
+AddEventHandler("character_storage:checkAdminPermission", function(action)
+    local _source = source
+    local User = VORPcore.getUser(_source)
+    
+    if not User then
+        DebugLog("User not found for source: " .. tostring(_source))
+        return
+    end
+    
+    local Character = User.getUsedCharacter
+    local group = Character.group
+    
+    -- Check if player is admin
+    if group == "admin" then
+        TriggerClientEvent("character_storage:toggleAdminMode", _source, action == "show")
+        DebugLog("Admin " .. _source .. " toggled storage admin mode: " .. action)
+    else
+        VORPcore.NotifyRightTip(_source, GetTranslation("no_permission"), 4000)
+        DebugLog("Non-admin " .. _source .. " attempted to use admin storage command")
+    end
+end)
