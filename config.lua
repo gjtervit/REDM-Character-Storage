@@ -21,6 +21,10 @@ Config.MaxStorages = 2
 -- Default storage capacity (items)
 Config.DefaultCapacity = 200
 
+-- Storage expiration settings
+Config.EnableStorageExpiration = true -- Whether to enable automatic deletion of unused storages
+Config.StorageExpirationDays = 60    -- Number of days after which an unused storage is deleted
+
 -- Storage access radius (in units)
 Config.AccessRadius = 2.0
 

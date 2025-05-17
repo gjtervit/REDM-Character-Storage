@@ -149,3 +149,85 @@ function DB.UpdateAuthorizedJobs(id, authorizedJobsJson, callback)
         end
     end)
 end
+
+-- Update last_accessed timestamp for a storage
+function DB.UpdateLastAccessed(id)
+    -- Convert id to number to ensure proper comparison
+    local numericId = tonumber(id)
+    if not numericId then
+        print("ERROR: Invalid storage ID for timestamp update: " .. tostring(id))
+        return
+    end
+
+    local query = "UPDATE character_storage SET last_accessed = CURRENT_TIMESTAMP() WHERE id = ?"
+    
+    -- Use a more direct debug approach that doesn't depend on Config.Debug
+    print("Updating last_accessed timestamp for storage #" .. numericId)
+    
+    exports.oxmysql:execute(query, {numericId}, function(result)
+        if not result then
+            print("ERROR: Failed to update last_accessed for storage #" .. numericId .. " - No result returned")
+            return
+        end
+        
+        if result.affectedRows > 0 then
+            print("Successfully updated last_accessed timestamp for storage #" .. numericId)
+        else
+            print("WARNING: Query executed but no rows affected for storage #" .. numericId .. " - Row may not exist")
+        end
+    end)
+end
+
+-- Check for and delete expired storages
+function DB.DeleteExpiredStorages(callback)
+    if not Config.EnableStorageExpiration then
+        if callback then callback(0) end
+        return
+    end
+    
+    local days = Config.StorageExpirationDays or 60
+    
+    -- First, check if the necessary columns exist in the table
+    exports.oxmysql:execute("SHOW COLUMNS FROM character_storage LIKE 'last_accessed'", {}, function(columnResult)
+        if not columnResult or #columnResult == 0 then
+            print("ERROR: 'last_accessed' column doesn't exist in character_storage table. Running automatic migration...")
+            
+            -- Add the column if it doesn't exist
+            exports.oxmysql:execute("ALTER TABLE character_storage ADD COLUMN last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP", {}, function(alterResult)
+                if alterResult then
+                    print("Successfully added 'last_accessed' column to character_storage table")
+                else
+                    print("Failed to add 'last_accessed' column")
+                    if callback then callback(0) end
+                    return
+                end
+            end)
+            
+            -- Also check for is_preset column
+            exports.oxmysql:execute("SHOW COLUMNS FROM character_storage LIKE 'is_preset'", {}, function(presetColumnResult)
+                if not presetColumnResult or #presetColumnResult == 0 then
+                    exports.oxmysql:execute("ALTER TABLE character_storage ADD COLUMN is_preset TINYINT(1) NOT NULL DEFAULT 0", {})
+                end
+            end)
+            
+            if callback then callback(0) end
+            return
+        end
+        
+        -- If the column exists, proceed with deletion
+        local query = [[
+            DELETE FROM character_storage 
+            WHERE last_accessed < DATE_SUB(CURRENT_TIMESTAMP(), INTERVAL ? DAY)
+            AND (is_preset = 0 OR is_preset IS NULL)
+        ]]
+        
+        exports.oxmysql:execute(query, {days}, function(result)
+            local deletedCount = result and result.affectedRows or 0
+            print("Deleted " .. deletedCount .. " expired storages (not accessed in the last " .. days .. " days)")
+            
+            if callback then
+                callback(deletedCount)
+            end
+        end)
+    end)
+end

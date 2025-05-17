@@ -156,6 +156,15 @@ function LoadAllStorages()
     
     print("Initializing character storage system...")
     
+    -- Delete expired storages if the feature is enabled
+    if Config.EnableStorageExpiration then
+        DB.DeleteExpiredStorages(function(deletedCount)
+            if deletedCount > 0 then
+                print("Cleaned up " .. deletedCount .. " expired storages that were inactive for " .. Config.StorageExpirationDays .. " days")
+            end
+        end)
+    end
+    
     DB.LoadAllStoragesFromDatabase(function(storages)
         if not storages then storages = {} end -- Ensure storages is a table
         
@@ -543,6 +552,14 @@ AddEventHandler("character_storage:openStorage", function(storageId)
         RegisterStorageInventory(storageId, storage.capacity or Config.DefaultCapacity)
     end
     
+    -- Update last_accessed timestamp - ALWAYS update for player-owned storages
+    if not storage.isPreset then
+        DebugLog("Updating last_accessed timestamp for regular storage #" .. storageId)
+        DB.UpdateLastAccessed(storageId)
+    else
+        DebugLog("Skipping timestamp update for preset storage #" .. storageId)
+    end
+    
     -- Open the inventory directly
     DebugLog("Opening inventory " .. inventoryName .. " for player " .. _source)
     VORPinv:openInventory(_source, inventoryName)
@@ -599,6 +616,10 @@ AddEventHandler('character_storage:checkOwnership', function(storageId)
         end
         return
     end
+    
+    -- For regular storages, update timestamp on ANY access attempt
+    DebugLog("Updating last_accessed timestamp for regular storage #" .. storageId .. " (checkOwnership call)")
+    DB.UpdateLastAccessed(storageId)
     
     -- If player is owner (DB storage), show the owner menu
     if IsStorageOwner(charId, storageId) then
