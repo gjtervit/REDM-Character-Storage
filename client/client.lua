@@ -249,7 +249,7 @@ RegisterCommand(Config.menustorage, function(source, args, rawCommand)
     
     if canCreate then
         -- Use the menu function from menu.lua
-        exports["character_storage"]:OpenCreateStorageMenu()
+        exports[GetCurrentResourceName()]:OpenCreateStorageMenu()
     else
         TriggerEvent('vorp:TipRight', GetTranslation("invalid_location"), 4000)
     end
@@ -264,7 +264,7 @@ AddEventHandler('character_storage:receiveStorages', function(storages)
     if not storages then
         DebugMsg("Received nil storages data")
         playerStorages = {}
-        exports["character_storage"]:UpdateStorages(playerStorages)
+        exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
         CreateStorageBlips() -- Changed back to direct call
         return
     end
@@ -302,7 +302,7 @@ AddEventHandler('character_storage:receiveStorages', function(storages)
     end
     if Config.Debug then DebugMsg("--- End of received storages verification ---") end
     
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
     
     if Config.Debug then
@@ -320,7 +320,7 @@ AddEventHandler('character_storage:updateStorageLocation', function(id, x, y, z)
             break
         end
     end
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -353,7 +353,7 @@ AddEventHandler('character_storage:updateStorageLocations', function(storage)
     end
     
     table.insert(playerStorages, storage)
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -372,7 +372,7 @@ AddEventHandler('character_storage:removeStorage', function(id)
         end
     end
 
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     
     for i, blip in pairs(storageBlips) do
         if blip and DoesBlipExist(blip) then
@@ -394,7 +394,7 @@ AddEventHandler('character_storage:updateStorageName', function(id, newName)
             break
         end
     end
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -514,7 +514,7 @@ RegisterCommand(Config.menustorage, function(source, args, rawCommand)
     
     if canCreate then
         -- Use the menu function from menu.lua
-        exports["character_storage"]:OpenCreateStorageMenu()
+        exports[GetCurrentResourceName()]:OpenCreateStorageMenu()
     else
         TriggerEvent('vorp:TipRight', GetTranslation("invalid_location"), 4000)
     end
@@ -529,7 +529,7 @@ AddEventHandler('character_storage:receiveStorages', function(storages)
     if not storages then
         DebugMsg("Received nil storages data")
         playerStorages = {}
-        exports["character_storage"]:UpdateStorages(playerStorages)
+        exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
         CreateStorageBlips() -- Changed back to direct call
         return
     end
@@ -567,7 +567,7 @@ AddEventHandler('character_storage:receiveStorages', function(storages)
     end
     if Config.Debug then DebugMsg("--- End of received storages verification ---") end
     
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
     
     if Config.Debug then
@@ -585,7 +585,7 @@ AddEventHandler('character_storage:updateStorageLocation', function(id, x, y, z)
             break
         end
     end
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -618,7 +618,7 @@ AddEventHandler('character_storage:updateStorageLocations', function(storage)
     end
     
     table.insert(playerStorages, storage)
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -637,7 +637,7 @@ AddEventHandler('character_storage:removeStorage', function(id)
         end
     end
 
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     
     for i, blip in pairs(storageBlips) do
         if blip and DoesBlipExist(blip) then
@@ -659,7 +659,7 @@ AddEventHandler('character_storage:updateStorageName', function(id, newName)
             break
         end
     end
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -779,7 +779,7 @@ RegisterCommand(Config.menustorage, function(source, args, rawCommand)
     
     if canCreate then
         -- Use the menu function from menu.lua
-        exports["character_storage"]:OpenCreateStorageMenu()
+        exports[GetCurrentResourceName()]:OpenCreateStorageMenu()
     else
         TriggerEvent('vorp:TipRight', GetTranslation("invalid_location"), 4000)
     end
@@ -794,7 +794,7 @@ AddEventHandler('character_storage:receiveStorages', function(storages)
     if not storages then
         DebugMsg("Received nil storages data")
         playerStorages = {}
-        exports["character_storage"]:UpdateStorages(playerStorages)
+        exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
         CreateStorageBlips() -- Changed back to direct call
         return
     end
@@ -832,7 +832,7 @@ AddEventHandler('character_storage:receiveStorages', function(storages)
     end
     if Config.Debug then DebugMsg("--- End of received storages verification ---") end
     
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
     
     if Config.Debug then
@@ -850,7 +850,7 @@ AddEventHandler('character_storage:updateStorageLocation', function(id, x, y, z)
             break
         end
     end
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -883,7 +883,7 @@ AddEventHandler('character_storage:updateStorageLocations', function(storage)
     end
     
     table.insert(playerStorages, storage)
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -902,7 +902,7 @@ AddEventHandler('character_storage:removeStorage', function(id)
         end
     end
 
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     
     for i, blip in pairs(storageBlips) do
         if blip and DoesBlipExist(blip) then
@@ -924,7 +924,7 @@ AddEventHandler('character_storage:updateStorageName', function(id, newName)
             break
         end
     end
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -1044,7 +1044,7 @@ RegisterCommand(Config.menustorage, function(source, args, rawCommand)
     
     if canCreate then
         -- Use the menu function from menu.lua
-        exports["character_storage"]:OpenCreateStorageMenu()
+        exports[GetCurrentResourceName()]:OpenCreateStorageMenu()
     else
         TriggerEvent('vorp:TipRight', GetTranslation("invalid_location"), 4000)
     end
@@ -1059,7 +1059,7 @@ AddEventHandler('character_storage:receiveStorages', function(storages)
     if not storages then
         DebugMsg("Received nil storages data")
         playerStorages = {}
-        exports["character_storage"]:UpdateStorages(playerStorages)
+        exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
         CreateStorageBlips() -- Changed back to direct call
         return
     end
@@ -1097,7 +1097,7 @@ AddEventHandler('character_storage:receiveStorages', function(storages)
     end
     if Config.Debug then DebugMsg("--- End of received storages verification ---") end
     
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
     
     if Config.Debug then
@@ -1115,7 +1115,7 @@ AddEventHandler('character_storage:updateStorageLocation', function(id, x, y, z)
             break
         end
     end
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -1148,7 +1148,7 @@ AddEventHandler('character_storage:updateStorageLocations', function(storage)
     end
     
     table.insert(playerStorages, storage)
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
@@ -1167,7 +1167,7 @@ AddEventHandler('character_storage:removeStorage', function(id)
         end
     end
 
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     
     for i, blip in pairs(storageBlips) do
         if blip and DoesBlipExist(blip) then
@@ -1189,7 +1189,7 @@ AddEventHandler('character_storage:updateStorageName', function(id, newName)
             break
         end
     end
-    exports["character_storage"]:UpdateStorages(playerStorages)
+    exports[GetCurrentResourceName()]:UpdateStorages(playerStorages)
     CreateStorageBlips() -- Changed back to direct call
 end)
 
