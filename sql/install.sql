@@ -23,6 +23,6 @@ CREATE TABLE IF NOT EXISTS `character_storage` (
 -- UPGRADE EXISTING TABLE (1.0.5 → 1.0.6+)
 -- =========================================
 ALTER TABLE `character_storage`
-  ADD COLUMN IF NOT EXISTS `authorized_jobs` TEXT NOT NULL DEFAULT '{}';
+  ADD COLUMN IF NOT EXISTS `authorized_jobs` TEXT NOT NULL DEFAULT '{}',
   ADD COLUMN IF NOT EXISTS `last_accessed` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   ADD COLUMN IF NOT EXISTS `is_preset` TINYINT(1) NOT NULL DEFAULT 0;
