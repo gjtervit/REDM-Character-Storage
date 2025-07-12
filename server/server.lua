@@ -8,7 +8,7 @@ local initialized = false
 -- Debug helper function for consistent logging
 function DebugLog(message)
     if not Config.Debug then return end
-    
+
     print("[Server Debug] " .. message)
 end
 
@@ -31,7 +31,7 @@ end
 function RefreshPlayerStorages(source)
     local Character = VORPcore.getUser(source).getUsedCharacter
     local charId = Character.charIdentifier
-    
+
     DB.GetAccessibleStorages(charId, function(storages)
         -- Ensure authorized_jobs is included, even if empty
         for i, s in ipairs(storages) do
@@ -48,27 +48,27 @@ function SendAllStoragesToPlayer(source)
         print("[ERROR] Attempted to send storages to nil source")
         return
     end
-    
+
     DebugLog("Sending all storages to player: " .. tostring(source))
     local storagesToSend = {}
-    
+
     -- Get player character info for permission checking
     local User = VORPcore.getUser(source)
     if not User then
         DebugLog("User not found for source: " .. tostring(source))
         return
     end
-    
+
     local Character = User.getUsedCharacter
     if not Character then
         DebugLog("Character not found for source: " .. tostring(source))
         return
     end
-    
+
     local charId = Character.charIdentifier
     local playerJob = Character.job
     local playerJobGrade = Character.jobGrade
-    
+
     for id, storageData_cached_entry in pairs(storageCache) do
         local s = shallowcopy(storageData_cached_entry) 
 
@@ -102,7 +102,7 @@ end
 -- Register a custom inventory for a storage
 function RegisterStorageInventory(id, capacity, storageData)
     local prefix = "character_storage_" .. id
-    
+
     local storage = storageData or storageCache[id] or {}
     local storageNameDisplay
 
@@ -120,13 +120,13 @@ function RegisterStorageInventory(id, capacity, storageData)
     else -- DB storage
         storageNameDisplay = (storage.storage_name or "Storage") .. " #" .. id -- e.g., "My Stash #123"
     end
-    
+
     -- Remove existing inventory if it exists to avoid conflicts
     if VORPinv:isCustomInventoryRegistered(prefix) then
         DebugLog("Removing existing inventory: " .. prefix)
         VORPinv:removeInventory(prefix)
     end
-    
+
     -- Register the inventory with proper parameters
     DebugLog("Registering inventory: " .. prefix .. " with capacity " .. capacity)
     local data = {
@@ -141,7 +141,7 @@ function RegisterStorageInventory(id, capacity, storageData)
         UseBlackList = false,
         whitelistWeapons = false,
     }
-    
+
     local success = VORPinv:registerInventory(data)
     DebugLog("Inventory registration result: " .. tostring(success))
     return success
@@ -153,9 +153,9 @@ function LoadAllStorages()
         print("Storage system already initialized")
         return
     end
-    
+
     print("Initializing character storage system...")
-    
+
     -- Delete expired storages if the feature is enabled
     if Config.EnableStorageExpiration then
         DB.DeleteExpiredStorages(function(deletedCount)
@@ -164,17 +164,17 @@ function LoadAllStorages()
             end
         end)
     end
-    
+
     DB.LoadAllStoragesFromDatabase(function(storages)
         if not storages then storages = {} end -- Ensure storages is a table
-        
+
         -- Process DB storages first
         for _, storage in ipairs(storages) do
             storageCache[storage.id] = storage
             storageCache[storage.id].authorized_jobs = storage.authorized_jobs or '{}'
             storageCache[storage.id].isPreset = false -- Explicitly mark as not preset
         end
-        
+
         -- Process Preset Storages from Config.DefaultStorages
         if Config.DefaultStorages and #Config.DefaultStorages > 0 then
             for _, preset in ipairs(Config.DefaultStorages) do
@@ -200,7 +200,7 @@ function LoadAllStorages()
                         for i, locData in ipairs(preset.locations) do
                             local instanceId = preset.id_prefix .. "_loc" .. i
                             local instanceName = string.format(preset.name_template or preset.name or "Preset Storage %s", locData.name_detail or i)
-                            
+
                             local cacheEntry = shallowcopy(preset)
                             cacheEntry.id = instanceId 
                             cacheEntry.storage_name = instanceName
@@ -226,12 +226,12 @@ function LoadAllStorages()
                 end
             end
         end
-        
+
         -- Register inventories for DB storages (after presets, in case of ID conflicts, though unlikely)
         local dbStoragesToRegister = {}
         for _, s_data in ipairs(storages) do table.insert(dbStoragesToRegister, s_data) end
         DB.RegisterAllStorageInventories(dbStoragesToRegister, RegisterStorageInventory)
-        
+
         -- Mark initialization as complete
         initialized = true
         print(("Character storage system initialized. DB Storages: %d, Preset Configs: %d. Total in cache: %d"):format(#storages, Config.DefaultStorages and #Config.DefaultStorages or 0, table.count(storageCache)))
@@ -241,23 +241,33 @@ end
 -- Load all storages into cache on resource start
 AddEventHandler('onResourceStart', function(resourceName)
     if resourceName ~= GetCurrentResourceName() then return end
-    
+
     LoadAllStorages()
-    
-    -- Add a small delay to ensure everything is loaded properly
-    Citizen.SetTimeout(1000, function()
-        SendStoragesToAllPlayers()
+
+    -- Re-add safe broadcast with delay and checks
+    Citizen.SetTimeout(3000, function()  -- Increased delay to 3s for more loading time
+        local players = GetPlayers()
+        for _, playerId in ipairs(players) do
+            local source = tonumber(playerId)
+            local User = VORPcore.getUser(source)
+            if User then
+                local Character = User.getUsedCharacter
+                if Character and Character.charIdentifier then  -- Only send if character is loaded
+                    SendAllStoragesToPlayer(source)
+                end
+            end
+        end
     end)
 end)
 
 -- Handle resource stop to clean up and prepare for potential restart
 AddEventHandler('onResourceStop', function(resourceName)
     if resourceName ~= GetCurrentResourceName() then return end
-    
+
     print("Character storage system stopping. Cleaning up resources...")
-    
+
     -- Any additional cleanup can go here
-    
+
     initialized = false
 end)
 
@@ -267,14 +277,14 @@ function SendStoragesToAllPlayers()
         print("Storage system not yet initialized. Cannot send data to players.")
         return
     end
-    
+
     local players = GetPlayers()
     local playerCount = #players
-    
+
     print("Broadcasting storage data to " .. playerCount .. " connected players")
-    
+
     local sentCount = 0
-    
+
     for _, playerId in ipairs(players) do
         local source = tonumber(playerId)
         if source then
@@ -294,7 +304,7 @@ function SendStoragesToAllPlayers()
             end
         end
     end
-    
+
     print("Successfully sent storage data to " .. sentCount .. " out of " .. playerCount .. " players")
 end
 
@@ -304,12 +314,12 @@ exports('RegisterAllStorageInventories', function()
         print("Storage cache not initialized yet")
         return 0
     end
-    
+
     local storages = {}
     for _, storage in pairs(storageCache) do
         table.insert(storages, storage)
     end
-    
+
     return DB.RegisterAllStorageInventories(storages, RegisterStorageInventory)
 end)
 
@@ -318,20 +328,20 @@ RegisterServerEvent('vorp:playerSpawn')
 AddEventHandler('vorp:playerSpawn', function(source, newChar, loadedFromRemove)
     -- In VORP, the first parameter might not be source for this server-side event
     local playerSource = tonumber(source) -- Ensure it's a number
-    
+
     if not playerSource then
         DebugLog("Error: Invalid source in playerSpawn event")
         return
     end
-    
+
     -- Short delay to ensure character is fully loaded
     Wait(2000)
-    
+
     -- Send available storage to the player
     if not initialized then
         LoadAllStorages() -- Make sure storages are loaded
     end
-    
+
     -- Send all storage locations to the player
     SendAllStoragesToPlayer(playerSource)
     DebugLog("Player " .. playerSource .. " spawned, sent " .. (storageCache and next(storageCache) and table.count(storageCache) or 0) .. " storages")
@@ -342,15 +352,15 @@ RegisterServerEvent('vorp:SelectedCharacter')
 AddEventHandler('vorp:SelectedCharacter', function(playerSource)
     -- In some VORP versions, the source is passed as parameter instead of being implicit
     local source = tonumber(playerSource)
-    
+
     if not source then
         DebugLog("Error: Invalid source in SelectedCharacter event")
         return
     end
-    
+
     -- Short delay to ensure character data is available
     Wait(2000)
-    
+
     -- Send storage data to player after character selection
     SendAllStoragesToPlayer(source)
     DebugLog("Player " .. source .. " selected character, sent storages")
@@ -374,7 +384,7 @@ end
 -- Check if player has access to a storage
 function HasStorageAccess(charId, storageId, playerJob, playerJobGrade)
     local storage = storageCache[storageId]
-    
+
     if not storage then return false end
 
     -- Handle Preset Storages
@@ -404,12 +414,12 @@ function HasStorageAccess(charId, storageId, playerJob, playerJobGrade)
         end
         return false -- If no explicit charid or job match for preset
     end
-    
+
     -- Owner always has access (for DB storages)
     if tonumber(storage.owner_charid) == tonumber(charId) then
         return true
     end
-    
+
     -- Check authorized users (personal access)
     local authorizedUsers = json.decode(storage.authorized_users or '[]')
     for _, id in pairs(authorizedUsers) do
@@ -434,7 +444,7 @@ function HasStorageAccess(charId, storageId, playerJob, playerJobGrade)
             end
         end
     end
-    
+
     return false
 end
 
@@ -444,30 +454,30 @@ AddEventHandler('character_storage:createStorage', function()
     local source = source
     local Character = VORPcore.getUser(source).getUsedCharacter
     local charId = Character.charIdentifier
-    
+
     -- Check if player has reached max number of storages
     DB.GetPlayerStorages(charId, function(storages)
         if #storages >= Config.MaxStorages then
             VORPcore.NotifyRightTip(source, GetTranslation("max_storages_reached", Config.MaxStorages), 4000)
             return
         end
-        
+
         -- Check if player has enough money
         if Character.money < Config.StorageCreationPrice then
             VORPcore.NotifyRightTip(source, GetTranslation("not_enough_money"), 4000)
             return
         end
-        
+
         -- Get player position
         local coords = GetEntityCoords(GetPlayerPed(source))
         local name = Character.firstname .. "'s Storage"
-        
+
         -- Create storage in database
         DB.CreateStorage(charId, name, coords.x, coords.y, coords.z, function(storageId)
             if storageId then
                 -- Remove money from player
                 Character.removeCurrency(0, Config.StorageCreationPrice)
-                
+
                 -- Register inventory for new storage
                 -- For DB storages, storageData passed to RegisterStorageInventory will have isPreset=false
                 local newDbStorageData = {
@@ -477,18 +487,18 @@ AddEventHandler('character_storage:createStorage', function()
                     isPreset = false -- Ensure this is set for RegisterStorageInventory logic
                 }
                 RegisterStorageInventory(storageId, Config.DefaultCapacity, newDbStorageData)
-                
+
                 -- Cache the new storage
                 DB.GetStorage(storageId, function(storage)
                     storage.isPreset = false -- Ensure flag is correct in cache
                     storageCache[storageId] = storage
-                    
+
                     -- Notify client
                     VORPcore.NotifyRightTip(source, GetTranslation("storage_created", Config.StorageCreationPrice), 4000)
-                    
+
                     -- Refresh player's storages data immediately
                     RefreshPlayerStorages(source)
-                    
+
                     -- Update all other clients with new storage location
                     TriggerClientEvent('character_storage:updateStorageLocations', -1, {
                         id = storageId,
@@ -513,12 +523,12 @@ end)
 RegisterNetEvent("character_storage:openStorage")
 AddEventHandler("character_storage:openStorage", function(storageId)
     local _source = source
-    
+
     -- Force convert to number to avoid type issues
     storageId = tonumber(storageId)
-    
+
     DebugLog("Open storage request: ID=" .. tostring(storageId) .. " from player=" .. _source)
-    
+
     -- Get our cached storage info
     local storage = storageCache[storageId]
     if not storage then 
@@ -526,32 +536,32 @@ AddEventHandler("character_storage:openStorage", function(storageId)
         VORPcore.NotifyRightTip(_source, "Storage not found", 3000)
         return
     end
-    
+
     -- Get character ID of requesting player
     local Character = VORPcore.getUser(_source).getUsedCharacter
     local charId = Character.charIdentifier
     local playerJob = Character.job
     local playerJobGrade = Character.jobGrade
-    
+
     DebugLog("Player charId=" .. charId .. " (Job: " .. playerJob .. ", Grade: " .. playerJobGrade .. ") requesting access to storage owned by " .. storage.owner_charid)
-    
+
     -- Verify access
     if not HasStorageAccess(charId, storageId, playerJob, playerJobGrade) then
         DebugLog("Access denied for player " .. charId)
         VORPcore.NotifyRightTip(_source, GetTranslation("no_permission"), 4000)
         return
     end
-    
+
     -- Set storage name
     local storageName = (storage.storage_name or ("Storage #" .. storageId)) .. " | ID:" .. storageId
     local inventoryName = "character_storage_" .. storageId
-    
+
     -- Make sure inventory is registered before opening it
     if not VORPinv:isCustomInventoryRegistered(inventoryName) then
         DebugLog("Registering inventory that wasn't registered before: " .. inventoryName)
         RegisterStorageInventory(storageId, storage.capacity or Config.DefaultCapacity)
     end
-    
+
     -- Update last_accessed timestamp - ALWAYS update for player-owned storages
     if not storage.isPreset then
         DebugLog("Updating last_accessed timestamp for regular storage #" .. storageId)
@@ -559,7 +569,7 @@ AddEventHandler("character_storage:openStorage", function(storageId)
     else
         DebugLog("Skipping timestamp update for preset storage #" .. storageId)
     end
-    
+
     -- Open the inventory directly
     DebugLog("Opening inventory " .. inventoryName .. " for player " .. _source)
     VORPinv:openInventory(_source, inventoryName)
@@ -576,12 +586,12 @@ function GetStorageById(id)
             storage = result[1]
         end
     end)
-    
+
     -- Wait for the query to complete
     while storage == nil do
         Citizen.Wait(0)
     end
-    
+
     return storage
 end
 
@@ -594,7 +604,7 @@ AddEventHandler('character_storage:checkOwnership', function(storageId)
     local group = Character.group
     local playerJob = Character.job
     local playerJobGrade = Character.jobGrade
-    
+
     -- Check if storage exists
     if not storageCache[storageId] then
         VORPcore.NotifyRightTip(source, "Storage not found", 4000)
@@ -616,11 +626,11 @@ AddEventHandler('character_storage:checkOwnership', function(storageId)
         end
         return
     end
-    
+
     -- For regular storages, update timestamp on ANY access attempt
     DebugLog("Updating last_accessed timestamp for regular storage #" .. storageId .. " (checkOwnership call)")
     DB.UpdateLastAccessed(storageId)
-    
+
     -- If player is owner (DB storage), show the owner menu
     if IsStorageOwner(charId, storageId) then
         TriggerClientEvent('character_storage:openOwnerMenu', source, storageId)
@@ -657,24 +667,24 @@ AddEventHandler('character_storage:addUser', function(storageId, firstname, last
         VORPcore.NotifyRightTip(source, "Preset storages cannot be managed this way.", 4000)
         return
     end
-    
+
     -- Check if player is storage owner
     if not IsStorageOwner(charId, storageId) then
         VORPcore.NotifyRightTip(source, GetTranslation("no_permission"), 4000)
         return
     end
-    
+
     -- Find character id from name
     GetCharIdFromName(firstname, lastname, function(targetCharId)
         if not targetCharId then
             VORPcore.NotifyRightTip(source, GetTranslation("player_not_found"), 4000)
             return
         end
-        
+
         -- Update authorized users
         local storage = storageCache[storageId]
         local authorizedUsers = json.decode(storage.authorized_users or '[]')
-        
+
         -- Check if user is already authorized
         for _, id in pairs(authorizedUsers) do
             if tonumber(id) == tonumber(targetCharId) then
@@ -682,33 +692,89 @@ AddEventHandler('character_storage:addUser', function(storageId, firstname, last
                 return
             end
         end
-        
+
         -- Add user to authorized users
         table.insert(authorizedUsers, targetCharId)
-        
+
         -- Update database
         DB.UpdateAuthorizedUsers(storageId, json.encode(authorizedUsers), function(success)
             if success then
                 -- Update cache
                 storage.authorized_users = json.encode(authorizedUsers)
                 VORPcore.NotifyRightTip(source, GetTranslation("player_added"), 4000)
-                
+
                 -- Refresh owner's storage data
                 RefreshPlayerStorages(source)
-                
+
                 -- If target player is online, notify and refresh them too
                 local targetSource = GetPlayerSourceFromCharId(targetCharId)
                 if targetSource then
                     -- Notify target player they've been given access
                     local storageName = storage.storage_name or "Storage #" .. storageId
-                    local ownerName = Character.firstname .. " " .. Character.lastname
+                    local ownerName = Character.firstname .. (Character.lastname and " " .. Character.lastname or "")
                     TriggerClientEvent('character_storage:notifyAccessGranted', targetSource, storageName, ownerName)
-                    
+
                     -- Update target player's storage list
                     RefreshPlayerStorages(targetSource)
                 end
             end
         end)
+    end)
+end)
+
+-- Add user to storage access list by charId (direct, no name lookup)
+RegisterServerEvent('character_storage:addUserById')
+AddEventHandler('character_storage:addUserById', function(storageId, targetCharId)
+    local source = source
+    local Character = VORPcore.getUser(source).getUsedCharacter
+    local charId = Character.charIdentifier
+
+    -- Prevent managing preset storages this way
+    if storageCache[storageId] and storageCache[storageId].isPreset then
+        VORPcore.NotifyRightTip(source, "Preset storages cannot be managed this way.", 4000)
+        return
+    end
+
+    -- Check if player is storage owner
+    if not IsStorageOwner(charId, storageId) then
+        VORPcore.NotifyRightTip(source, GetTranslation("no_permission"), 4000)
+        return
+    end
+
+    -- Update authorized users
+    local storage = storageCache[storageId]
+    local authorizedUsers = json.decode(storage.authorized_users or '[]')
+
+    -- Check if user is already authorized
+    for _, id in pairs(authorizedUsers) do
+        if tonumber(id) == tonumber(targetCharId) then
+            VORPcore.NotifyRightTip(source, GetTranslation("already_has_access"), 4000)
+            return
+        end
+    end
+
+    -- Add user to authorized users
+    table.insert(authorizedUsers, targetCharId)
+
+    -- Update database
+    DB.UpdateAuthorizedUsers(storageId, json.encode(authorizedUsers), function(success)
+        if success then
+            -- Update cache
+            storage.authorized_users = json.encode(authorizedUsers)
+            VORPcore.NotifyRightTip(source, GetTranslation("player_added"), 4000)
+
+            -- Refresh owner's storage data
+            RefreshPlayerStorages(source)
+
+            -- If target player is online, notify and refresh them too
+            local targetSource = GetPlayerSourceFromCharId(targetCharId)
+            if targetSource then
+                local storageName = storage.storage_name or "Storage #" .. storageId
+                local ownerName = Character.firstname .. (Character.lastname and " " .. Character.lastname or "")
+                TriggerClientEvent('character_storage:notifyAccessGranted', targetSource, storageName, ownerName)
+                RefreshPlayerStorages(targetSource)
+            end
+        end
     end)
 end)
 
@@ -738,40 +804,40 @@ AddEventHandler('character_storage:removeUser', function(storageId, targetCharId
         VORPcore.NotifyRightTip(source, "Preset storages cannot be managed this way.", 4000)
         return
     end
-    
+
     -- Check if player is storage owner
     if not IsStorageOwner(charId, storageId) then
         VORPcore.NotifyRightTip(source, GetTranslation("no_permission"), 4000)
         return
     end
-    
+
     -- Update authorized users
     local storage = storageCache[storageId]
     local authorizedUsers = json.decode(storage.authorized_users or '[]')
     local newAuthorizedUsers = {}
-    
+
     -- Filter out the target user
     for _, id in pairs(authorizedUsers) do
         if tonumber(id) ~= tonumber(targetCharId) then
             table.insert(newAuthorizedUsers, id)
         end
     end
-    
+
     -- Update database
     DB.UpdateAuthorizedUsers(storageId, json.encode(newAuthorizedUsers), function(success)
         if success then
             -- Update cache
             storage.authorized_users = json.encode(newAuthorizedUsers)
             VORPcore.NotifyRightTip(source, GetTranslation("player_removed"), 4000)
-            
+
             -- Refresh player's storage data
             RefreshPlayerStorages(source)
-            
+
             -- If target player is online, notify and refresh them too
             local targetSource = GetPlayerSourceFromCharId(targetCharId)
             if targetSource then
                 local storageName = storage.storage_name or "Storage #" .. storageId
-                local ownerName = Character.firstname .. " " .. Character.lastname
+                local ownerName = Character.firstname .. (Character.lastname and " " .. Character.lastname or "")
                 TriggerClientEvent('character_storage:notifyAccessRevoked', targetSource, storageName, ownerName)
                 RefreshPlayerStorages(targetSource)
             end
@@ -780,16 +846,17 @@ AddEventHandler('character_storage:removeUser', function(storageId, targetCharId
 end)
 
 -- Add a new, more direct event handler for removing access
+-- Remove user from storage access list (direct event)
 RegisterServerEvent('character_storage:removeAccess')
 AddEventHandler('character_storage:removeAccess', function(storageId, targetCharId)
     local source = source
     local Character = VORPcore.getUser(source).getUsedCharacter
     local ownerCharId = Character.charIdentifier
-    
+
     DebugLog("========== REMOVAL REQUEST START ==========")
     DebugLog("Source player: " .. source .. ", Character: " .. ownerCharId)
     DebugLog("Storage ID: " .. tostring(storageId) .. ", Target CharID: " .. tostring(targetCharId))
-    
+
     -- Ensure proper type conversion
     storageId = tonumber(storageId)
     targetCharId = tonumber(targetCharId)
@@ -800,52 +867,52 @@ AddEventHandler('character_storage:removeAccess', function(storageId, targetChar
         DebugLog("Attempt to manage preset storage " .. storageId .. " via removeAccess denied.")
         return
     end
-    
+
     if not storageId or not targetCharId then
         DebugLog("ERROR: Invalid IDs after conversion")
         VORPcore.NotifyRightTip(source, "Invalid storage or character ID", 4000)
         return
     end
-    
+
     -- Check if storage exists
     if not storageCache[storageId] then
         DebugLog("ERROR: Storage " .. storageId .. " not found in cache")
         VORPcore.NotifyRightTip(source, "Storage not found", 4000)
         return
     end
-    
+
     local storage = storageCache[storageId]
     DebugLog("Storage found: Name = " .. (storage.storage_name or "Unnamed") .. ", Owner = " .. storage.owner_charid)
-    
+
     -- Check if player is storage owner
     if tonumber(storage.owner_charid) ~= tonumber(ownerCharId) then
         DebugLog("ERROR: Player " .. ownerCharId .. " is not the owner " .. storage.owner_charid)
         VORPcore.NotifyRightTip(source, "Only the storage owner can remove access", 4000)
         return
     end
-    
+
     -- Get current authorized users
     DebugLog("Raw authorized_users JSON: " .. tostring(storage.authorized_users))
-    
+
     local authorizedUsers = {}
     -- Safely parse JSON
     local success = pcall(function() 
         authorizedUsers = json.decode(storage.authorized_users or '[]')
     end)
-    
+
     if not success then
         DebugLog("ERROR: Failed to parse authorized_users JSON")
         VORPcore.NotifyRightTip(source, "Error processing storage data", 4000)
         return
     end
-    
+
     DebugLog("Current authorized users: " .. json.encode(authorizedUsers))
-    
+
     -- Create new list without target user
     local newAuthorizedUsers = {}
     local wasRemoved = false
     local targetSource = nil
-    
+
     for _, id in pairs(authorizedUsers) do
         if tonumber(id) ~= targetCharId then
             table.insert(newAuthorizedUsers, tonumber(id))
@@ -856,17 +923,17 @@ AddEventHandler('character_storage:removeAccess', function(storageId, targetChar
             targetSource = GetPlayerSourceFromCharId(targetCharId)
         end
     end
-    
+
     if not wasRemoved then
         DebugLog("ERROR: Target user " .. targetCharId .. " not found in authorized list")
         VORPcore.NotifyRightTip(source, "Player not found in access list", 4000)
         return
     end
-    
+
     -- Update the database directly
     local jsonData = json.encode(newAuthorizedUsers)
     DebugLog("New authorized_users JSON: " .. jsonData)
-    
+
     -- Use a direct query for simplicity
     exports.oxmysql:execute(
         "UPDATE character_storage SET authorized_users = ? WHERE id = ?",
@@ -874,28 +941,28 @@ AddEventHandler('character_storage:removeAccess', function(storageId, targetChar
         function(result)
             if result and result.affectedRows > 0 then
                 DebugLog("Database updated successfully - Rows affected: " .. result.affectedRows)
-                
+
                 -- Update local cache
                 storage.authorized_users = jsonData
                 VORPcore.NotifyRightTip(source, "Player access has been removed", 4000)
-                
+
                 -- Refresh owner's storage data
                 RefreshPlayerStorages(source)
-                
+
                 -- If target player is online, notify and refresh them too
                 if targetSource then
                     local storageName = storage.storage_name or "Storage #" .. storageId
-                    local ownerName = Character.firstname .. " " .. Character.lastname
+                    local ownerName = Character.firstname .. (Character.lastname and " " .. Character.lastname or "")
                     TriggerClientEvent('character_storage:notifyAccessRevoked', targetSource, storageName, ownerName)
                     RefreshPlayerStorages(targetSource)
                 end
-                
+
                 DebugLog("Success - Sent storage refresh to client")
             else
                 DebugLog("ERROR: Database update failed")
                 VORPcore.NotifyRightTip(source, "Failed to update database", 4000)
             end
-            
+
             DebugLog("========== REMOVAL REQUEST COMPLETE ==========")
         end
     )
@@ -913,47 +980,47 @@ AddEventHandler('character_storage:upgradeStorage', function(storageId)
         VORPcore.NotifyRightTip(source, "Preset storages cannot be upgraded.", 4000)
         return
     end
-    
+
     -- Check if player is storage owner
     if not IsStorageOwner(charId, storageId) then
         VORPcore.NotifyRightTip(source, GetTranslation("no_permission"), 4000)
         return
     end
-    
+
     local storage = storageCache[storageId]
     local currentCapacity = tonumber(storage.capacity) or Config.DefaultCapacity
-    
+
     -- Calculate the number of previous upgrades
     local previousUpgrades = math.floor((currentCapacity - Config.DefaultCapacity) / Config.StorageUpgradeSlots)
-    
+
     -- Calculate the price with multiplier: BasePrice * (1 + Multiplier)^PreviousUpgrades
     local basePrice = Config.StorageUpgradePrice
     local multiplier = Config.StorageUpgradePriceMultiplier
     local upgradePrice = math.floor(basePrice * math.pow((1 + multiplier), previousUpgrades))
-    
+
     -- Check if player has enough money
     if Character.money < upgradePrice then
         VORPcore.NotifyRightTip(source, GetTranslation("not_enough_money"), 4000)
         return
     end
-    
+
     local newCapacity = currentCapacity + Config.StorageUpgradeSlots
-    
+
     -- Update storage capacity
     DB.UpdateStorageCapacity(storageId, newCapacity, function(success)
         if success then
             -- Remove money from player
             Character.removeCurrency(0, upgradePrice)
-            
+
             -- Update cache
             storage.capacity = newCapacity
-            
+
             -- Update inventory limit
             local prefix = "character_storage_" .. storageId
             VORPinv:updateCustomInventorySlots(prefix, newCapacity)
-            
+
             VORPcore.NotifyRightTip(source, GetTranslation("storage_upgraded", upgradePrice), 4000)
-            
+
             -- Refresh the player's storage data so the client has updated capacity info
             RefreshPlayerStorages(source)
         end
@@ -972,31 +1039,31 @@ AddEventHandler('character_storage:renameStorage', function(storageId, newName)
         VORPcore.NotifyRightTip(source, "Preset storages cannot be renamed.", 4000)
         return
     end
-    
+
     -- Check if player is storage owner
     if not IsStorageOwner(charId, storageId) then
         VORPcore.NotifyRightTip(source, GetTranslation("no_permission"), 4000)
         return
     end
-    
+
     -- Sanitize the name (remove any potential SQL injection)
     newName = newName:gsub("'", ""):gsub(";", ""):gsub("-", ""):sub(1, 50)
-    
+
     -- Update storage name
     local query = "UPDATE character_storage SET storage_name = ? WHERE id = ?"
     exports.oxmysql:execute(query, {newName, storageId}, function(result)
         if result.affectedRows > 0 then
             -- Update cache
             storageCache[storageId].storage_name = newName
-            
+
             -- Get the current inventory data to preserve its settings
             local prefix = "character_storage_" .. storageId
             local currentStorage = storageCache[storageId]
             currentStorage.isPreset = false -- Ensure it's marked as not a preset for RegisterStorageInventory
-            
+
             -- Remove existing inventory and re-register with new name
             VORPinv:removeInventory(prefix)
-            
+
             -- Re-register the inventory with the new name
             local data = {
                 id = prefix,
@@ -1011,13 +1078,13 @@ AddEventHandler('character_storage:renameStorage', function(storageId, newName)
                 whitelistWeapons = false
             }
             VORPinv:registerInventory(data)
-            
+
             -- Notify client
             VORPcore.NotifyRightTip(source, GetTranslation("storage_renamed"), 4000)
-            
+
             -- Refresh owner's storage data
             RefreshPlayerStorages(source)
-            
+
             -- Update all clients with new storage name
             TriggerClientEvent('character_storage:updateStorageName', -1, storageId, newName)
         end
@@ -1028,29 +1095,29 @@ end)
 RegisterCommand(Config.adminmovestorage, function(source, args, rawCommand)
     local Character = VORPcore.getUser(source).getUsedCharacter
     local group = Character.group
-    
+
     -- Check if player is admin
     if group ~= "admin" then
         VORPcore.NotifyRightTip(source, GetTranslation("no_permission"), 4000)
         return
     end
-    
+
     local storageId = tonumber(args[1])
     local x = tonumber(args[2])
     local y = tonumber(args[3])
     local z = tonumber(args[4])
-    
+
     if not storageId or not x or not y or not z then
         VORPcore.NotifyRightTip(source, "Usage: /movestorage id x y z", 4000)
         return
     end
-    
+
     -- Check if storage exists
     if not storageCache[storageId] then
         VORPcore.NotifyRightTip(source, "Storage not found", 4000)
         return
     end
-    
+
     -- Update storage location
     DB.UpdateStorageLocation(storageId, x, y, z, function(success)
         if success then
@@ -1058,7 +1125,7 @@ RegisterCommand(Config.adminmovestorage, function(source, args, rawCommand)
             storageCache[storageId].pos_x = x
             storageCache[storageId].pos_y = y
             storageCache[storageId].pos_z = z
-            
+
             -- Update all clients with new storage location
             TriggerClientEvent('character_storage:updateStorageLocation', -1, storageId, x, y, z)
             VORPcore.NotifyRightTip(source, GetTranslation("storage_moved", storageId), 4000)
@@ -1070,28 +1137,28 @@ end, false)
 RegisterCommand(Config.admindeletestorage, function(source, args, rawCommand)
     local Character = VORPcore.getUser(source).getUsedCharacter
     local group = Character.group
-    
+
     -- Check if player is admin
     if group ~= "admin" then
         VORPcore.NotifyRightTip(source, GetTranslation("no_permission"), 4000)
         return
     end
-    
+
     local storageId = tonumber(args[1])
-    
+
     if not storageId then
         VORPcore.NotifyRightTip(source, GetTranslation("usage_deletestorage"), 4000)
         return
     end
-    
+
     -- Check if storage exists
     if not storageCache[storageId] then
         VORPcore.NotifyRightTip(source, GetTranslation("storage_not_found"), 4000)
         return
     end
-    
+
     DebugLog("Admin " .. source .. " is deleting storage #" .. storageId)
-    
+
     -- Delete storage
     DB.DeleteStorage(storageId, function(success)
         if success then
@@ -1099,15 +1166,15 @@ RegisterCommand(Config.admindeletestorage, function(source, args, rawCommand)
             local prefix = "character_storage_" .. storageId
             VORPinv:removeInventory(prefix)
             DebugLog("Removed inventory for storage #" .. storageId)
-            
+
             -- Remove from cache
             storageCache[storageId] = nil
             DebugLog("Removed storage #" .. storageId .. " from server cache")
-            
+
             -- Notify all clients to remove this storage from their data
             TriggerClientEvent('character_storage:removeStorage', -1, storageId)
             DebugLog("Notified all clients to remove storage #" .. storageId)
-            
+
             -- Notify the admin
             VORPcore.NotifyRightTip(source, GetTranslation("storage_deleted", storageId), 4000)
         else
@@ -1129,30 +1196,50 @@ AddEventHandler('character_storage:getOnlinePlayers', function()
     local source = source
     local _source = source
     local playersList = {}
-    
+
+    DebugLog("Fetching online players for source " .. source .. " - Total connected: " .. #GetPlayers())
+
     -- Loop through all players
     for _, playerId in ipairs(GetPlayers()) do
         if tonumber(playerId) ~= tonumber(_source) then -- Skip the requesting player
             local targetUser = VORPcore.getUser(playerId)
             if targetUser then
-                local targetCharacter = targetUser.getUsedCharacter
-                local targetPed = GetPlayerPed(playerId)
-                local targetCoords = GetEntityCoords(targetPed)
-                
-                table.insert(playersList, {
-                    serverId = playerId,
-                    charId = targetCharacter.charIdentifier,
-                    name = targetCharacter.firstname .. " " .. targetCharacter.lastname,
-                    coords = {
-                        x = targetCoords.x,
-                        y = targetCoords.y,
-                        z = targetCoords.z
-                    }
-                })
+                local getCharFunc = targetUser.getUsedCharacter
+                local targetCharacter
+                if type(getCharFunc) == "function" then
+                    targetCharacter = getCharFunc()  -- Call as method if function
+                elseif type(getCharFunc) == "table" then
+                    targetCharacter = getCharFunc  -- Use as table/property if not function
+                end
+
+                -- Proceed if character data exists
+                if targetCharacter and targetCharacter.charIdentifier then
+                    local targetPed = GetPlayerPed(playerId)
+                    local targetCoords = GetEntityCoords(targetPed)
+
+                    local playerName = (targetCharacter.firstname or "Unknown") .. (targetCharacter.lastname and " " .. targetCharacter.lastname or "")
+                    DebugLog("Adding player ID " .. playerId .. ": Name=" .. playerName .. ", CharID=" .. targetCharacter.charIdentifier)
+
+                    table.insert(playersList, {
+                        serverId = playerId,
+                        charId = targetCharacter.charIdentifier,
+                        name = playerName,
+                        coords = {
+                            x = targetCoords.x,
+                            y = targetCoords.y,
+                            z = targetCoords.z
+                        }
+                    })
+                else
+                    DebugLog("Skipping player ID " .. playerId .. " - No character data or charIdentifier. Type of getUsedCharacter: " .. type(getCharFunc))
+                end
+            else
+                DebugLog("Skipping player ID " .. playerId .. " - No user data")
             end
         end
     end
     
+    DebugLog("Sending " .. #playersList .. " players to client " .. source)
     TriggerClientEvent('character_storage:receiveOnlinePlayers', source, playersList)
 end)
 
@@ -1160,7 +1247,7 @@ end)
 RegisterServerEvent("character_storage:getCharacterName")
 AddEventHandler("character_storage:getCharacterName", function(charId, callbackId)
     local _source = source
-    
+
     exports.oxmysql:execute("SELECT firstname, lastname FROM characters WHERE charidentifier = ?", {charId}, function(result)
         local name = nil
         if result and #result > 0 then
@@ -1241,14 +1328,14 @@ end)
 -- Helper function to get translation based on character's language
 function GetTranslation(key, ...)
     local lang = Config.DefaultLanguage
-    
+
     -- Simple format function
     local result = Config.Translations[lang][key] or key
-    
+
     if ... then
         result = string.format(result, ...)
     end
-    
+
     return result
 end
 
@@ -1257,15 +1344,15 @@ RegisterServerEvent("character_storage:checkAdminPermission")
 AddEventHandler("character_storage:checkAdminPermission", function(action)
     local _source = source
     local User = VORPcore.getUser(_source)
-    
+
     if not User then
         DebugLog("User not found for source: " .. tostring(_source))
         return
     end
-    
+
     local Character = User.getUsedCharacter
     local group = Character.group
-    
+
     -- Check if player is admin
     if group == "admin" then
         TriggerClientEvent("character_storage:toggleAdminMode", _source, action == "show")
